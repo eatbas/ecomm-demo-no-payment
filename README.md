@@ -29,6 +29,14 @@ Modern evergreen browsers with ES modules and `localStorage` support are the tar
 
 ## Docker-only development
 
+From the repository root:
+
+```sh
+./start.sh
+```
+
+Open <http://127.0.0.1:5173>. The wrapper uses the Docker flow below, keeps `node_modules` on a named volume, and does not create a `.env` file: this static application has no runtime configuration or secrets.
+
 Node.js is not required on the host. The development server binds only to the host loopback interface:
 
 ```sh
@@ -78,6 +86,16 @@ docker stop ecomm-demo-no-payment-smoke
 
 Wait for the inspected health status to become `healthy`; the endpoint body must be `ok`. Then visit `/`, `/cart`, and `/checkout` directly at <http://127.0.0.1:8080>. A missing `/assets/...` file must return 404, while an extensionless unknown route must load the app's not-found view.
 
+## Reproducible browser audit
+
+Run the maintained Playwright audit after customer-facing, routing, or styling changes:
+
+```sh
+./scripts/run-browser-audit.sh
+```
+
+The script builds the production image and a pinned Playwright 1.61.0 runner, starts the application on an isolated temporary Docker network, and always removes its temporary container and network. It checks the catalogue and keyboard entry point at 1440 px, 390 px, and 320 px; the desktop pass also exercises the cart and inert checkout journey. Console errors, page errors, failed requests, external requests, unexpected form controls, horizontal overflow, and lost cart state fail the audit.
+
 ## Coolify deployment
 
 Create an application from this Git repository and use these settings:
@@ -111,7 +129,7 @@ Also inspect the response headers for the content security policy, frame denial,
 
 ## Updating dependencies and base images
 
-Keep application versions exact in `package.json` and let `package-lock.json` remain authoritative. Before updating a library, inspect its release and migration documentation for the intended version. Edit the exact version, regenerate the lockfile in the pinned Node container, and review both manifest and lockfile changes:
+Keep application versions exact in `package.json` and let `package-lock.json` remain authoritative. Before updating a library, inspect its release and migration documentation for the intended version. The `playwright` package version must exactly match the tag and digest in `tests/browser-audit.Dockerfile`. Edit the exact versions, regenerate the lockfile in the pinned Node container, and review the manifest, lockfile, and browser-runner image together:
 
 ```sh
 docker run --rm \
