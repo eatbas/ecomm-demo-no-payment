@@ -4,18 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router";
 
 import { CartProvider } from "@/features/cart/CartContext";
-import {
-  CART_STORAGE_KEY,
-  CART_STORAGE_VERSION,
-} from "@/features/cart/cart.storage";
 import { CheckoutPage } from "@/pages/CheckoutPage";
-
-function seedCart(lines: readonly Record<string, unknown>[]) {
-  window.localStorage.setItem(
-    CART_STORAGE_KEY,
-    JSON.stringify({ version: CART_STORAGE_VERSION, lines }),
-  );
-}
+import { seedStoredCart } from "@/test/cart";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -23,7 +13,7 @@ afterEach(() => {
 
 describe("CheckoutPage", () => {
   it("renders only a read-only summary and navigation without network activity", async () => {
-    seedCart([
+    seedStoredCart([
       { productId: "everyday-backpack", quantity: 2 },
       { productId: "travel-mug", quantity: 1 },
     ]);
@@ -60,7 +50,7 @@ describe("CheckoutPage", () => {
   });
 
   it("redirects an empty cart to the cart page", () => {
-    seedCart([]);
+    seedStoredCart();
 
     render(
       <CartProvider>

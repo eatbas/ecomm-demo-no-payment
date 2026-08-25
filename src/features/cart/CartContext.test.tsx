@@ -7,6 +7,7 @@ import {
   CART_STORAGE_KEY,
   CART_STORAGE_VERSION,
 } from "@/features/cart/cart.storage";
+import { seedStoredCart } from "@/test/cart";
 
 function CartProbe() {
   const { itemCount, addItem } = useCart();
@@ -23,13 +24,7 @@ function CartProbe() {
 
 describe("CartProvider", () => {
   it("hydrates once from validated storage and persists subsequent changes", async () => {
-    window.localStorage.setItem(
-      CART_STORAGE_KEY,
-      JSON.stringify({
-        version: CART_STORAGE_VERSION,
-        lines: [{ productId: "desk-lamp", quantity: 2 }],
-      }),
-    );
+    seedStoredCart([{ productId: "desk-lamp", quantity: 2 }]);
     const user = userEvent.setup();
 
     render(
