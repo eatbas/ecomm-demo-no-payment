@@ -108,4 +108,26 @@ describe("cartReducer", () => {
     ).toBe(EMPTY_CART);
     expect(cartReducer(EMPTY_CART, { type: "clear" })).toBe(EMPTY_CART);
   });
+
+  it.each([0, -1, 1.5, MAX_CART_QUANTITY + 1, Number.NaN])(
+    "removes a malformed quantity of %s before applying a transition",
+    (quantity) => {
+      const malformedState: CartState = {
+        lines: [{ productId: "desk-lamp", quantity }],
+      };
+
+      expect(
+        cartReducer(malformedState, {
+          type: "decrement",
+          productId: "desk-lamp",
+        }),
+      ).toBe(EMPTY_CART);
+      expect(
+        cartReducer(malformedState, {
+          type: "add",
+          productId: "desk-lamp",
+        }),
+      ).toEqual({ lines: [{ productId: "desk-lamp", quantity: 1 }] });
+    },
+  );
 });
