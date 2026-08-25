@@ -19,9 +19,11 @@ describe("AppHeader", () => {
     expect(
       screen.getByRole("navigation", { name: "Primary navigation" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Common Goods" })).toHaveAttribute(
-      "href",
-      "/",
+    const homeLink = screen.getByRole("link", { name: "Common Goods" });
+    expect(homeLink).toHaveAttribute("href", "/");
+    expect(homeLink.querySelector('img[src="/logo.svg"]')).toHaveAttribute(
+      "alt",
+      "",
     );
     expect(screen.getByRole("link", { name: "Cart, 0 items" })).toHaveAttribute(
       "href",

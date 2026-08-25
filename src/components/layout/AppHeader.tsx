@@ -1,11 +1,12 @@
 import { Link, NavLink } from "react-router";
 
+import { ShopLogo } from "@/components/layout/ShopLogo";
 import { Badge } from "@/components/ui/badge";
 import { useCart } from "@/features/cart/CartContext";
 import { cn } from "@/lib/utils";
 
 const navigationLinkClasses =
-  "cursor-pointer rounded-full px-4 py-2 text-sm font-semibold outline-none transition-colors hover:bg-secondary focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background motion-reduce:transition-none";
+  "cursor-pointer rounded-full px-3 py-2 text-sm font-semibold outline-none transition-colors hover:bg-secondary focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background motion-reduce:transition-none sm:px-4";
 
 export function AppHeader() {
   const { itemCount } = useCart();
@@ -13,12 +14,15 @@ export function AppHeader() {
 
   return (
     <header className="border-b border-border bg-card/95">
-      <div className="mx-auto flex min-h-16 w-full max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
+      <div className="mx-auto flex min-h-16 w-full max-w-6xl flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-4 sm:px-6 lg:px-8">
         <Link
           to="/"
-          className="rounded-md font-display text-xl font-bold tracking-tight text-primary outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:text-2xl"
+          className="inline-flex min-w-0 items-center gap-2 rounded-md text-primary outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:gap-2.5"
         >
-          Common Goods
+          <ShopLogo className="size-8 shrink-0 sm:size-10" />
+          <span className="font-display text-xl font-bold tracking-tight sm:text-2xl">
+            Common Goods
+          </span>
         </Link>
 
         <nav aria-label="Primary navigation" className="shrink-0">

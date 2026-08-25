@@ -4,6 +4,7 @@ import { BrowserRouter, useLocation } from "react-router";
 import { AppProviders } from "@/app/AppProviders";
 import { AppRoutes } from "@/app/AppRoutes";
 import { AppHeader } from "@/components/layout/AppHeader";
+import { ShopLogo } from "@/components/layout/ShopLogo";
 import { ToastRegion } from "@/components/toast/ToastRegion";
 
 function RouteFocusManager() {
@@ -53,7 +54,10 @@ export function App() {
             <AppRoutes />
           </main>
           <footer className="border-t border-border px-4 py-6 text-center text-sm text-muted-foreground">
-            Common Goods demonstration shop
+            <div className="flex flex-col items-center gap-2">
+              <ShopLogo className="size-8" />
+              <p>Common Goods demonstration shop</p>
+            </div>
           </footer>
           <ToastRegion />
         </div>
