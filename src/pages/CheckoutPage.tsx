@@ -48,7 +48,7 @@ export function CheckoutPage() {
 
       <Card className="mt-6">
         <CardHeader>
-          <CardTitle>Cart summary</CardTitle>
+          <CardTitle level={2}>Cart summary</CardTitle>
           <p className="text-sm text-muted-foreground">
             {itemCount} {itemCount === 1 ? "item" : "items"}
           </p>

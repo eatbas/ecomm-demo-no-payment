@@ -2,6 +2,20 @@ import type { HTMLAttributes } from "react";
 
 import { cn } from "@/lib/utils";
 
+type CardTitleLevel = 2 | 3 | 4 | 5 | 6;
+
+interface CardTitleProps extends HTMLAttributes<HTMLHeadingElement> {
+  readonly level?: CardTitleLevel;
+}
+
+const cardTitleElements = {
+  2: "h2",
+  3: "h3",
+  4: "h4",
+  5: "h5",
+  6: "h6",
+} as const;
+
 function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
@@ -18,9 +32,11 @@ function CardHeader({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return <div className={cn("space-y-2 p-6", className)} {...props} />;
 }
 
-function CardTitle({ className, ...props }: HTMLAttributes<HTMLHeadingElement>) {
+function CardTitle({ className, level = 3, ...props }: CardTitleProps) {
+  const Heading = cardTitleElements[level];
+
   return (
-    <h3
+    <Heading
       className={cn("text-xl font-semibold leading-none tracking-tight", className)}
       {...props}
     />
