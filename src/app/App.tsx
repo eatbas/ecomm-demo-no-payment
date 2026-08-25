@@ -22,6 +22,10 @@ function RouteFocusManager() {
 }
 
 export function App() {
+  useEffect(() => {
+    document.title = "Common Goods";
+  }, []);
+
   return (
     <CartProvider>
       <BrowserRouter>

@@ -9,6 +9,7 @@ describe("App", () => {
 
     render(<App />);
 
+    expect(document.title).toBe("Common Goods");
     expect(
       screen.getByRole("link", { name: "Skip to main content" }),
     ).toHaveAttribute("href", "#main-content");
