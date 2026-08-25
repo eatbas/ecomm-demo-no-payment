@@ -4,18 +4,11 @@ import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 
 import { CartProvider } from "@/features/cart/CartContext";
-import {
-  CART_STORAGE_KEY,
-  CART_STORAGE_VERSION,
-} from "@/features/cart/cart.storage";
 import { CartPage } from "@/pages/CartPage";
+import { seedStoredCart } from "@/test/cart";
 
-function renderCart(lines: readonly Record<string, unknown>[] = []) {
-  window.localStorage.setItem(
-    CART_STORAGE_KEY,
-    JSON.stringify({ version: CART_STORAGE_VERSION, lines }),
-  );
-
+function renderCart(lines: Parameters<typeof seedStoredCart>[0] = []) {
+  seedStoredCart(lines);
   return render(
     <CartProvider>
       <MemoryRouter>
@@ -43,7 +36,9 @@ describe("CartPage", () => {
     const user = userEvent.setup();
     renderCart([{ productId: "everyday-backpack", quantity: 1 }]);
 
-    expect(screen.getByRole("img", { name: /forest green canvas backpack/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: /forest green canvas backpack/i }),
+    ).toBeInTheDocument();
     expect(screen.getByText("€79.00 each")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Review checkout" })).toHaveAttribute(
       "href",
@@ -62,13 +57,6 @@ describe("CartPage", () => {
     expect(
       screen.getByLabelText("Line total for Everyday backpack"),
     ).toHaveTextContent("€158.00");
-
-    await user.click(
-      screen.getByRole("button", { name: "Remove Everyday backpack" }),
-    );
-    expect(
-      screen.getByRole("heading", { name: "Your cart is empty" }),
-    ).toBeInTheDocument();
   });
 
   it("disables incrementing at the quantity cap", () => {
@@ -79,5 +67,59 @@ describe("CartPage", () => {
         name: "Increase quantity of Adjustable desk lamp",
       }),
     ).toBeDisabled();
+  });
+
+  it("announces decrement-removal and focuses the next cart line", async () => {
+    const user = userEvent.setup();
+    renderCart([
+      { productId: "everyday-backpack", quantity: 1 },
+      { productId: "travel-mug", quantity: 1 },
+    ]);
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Decrease quantity of Everyday backpack",
+      }),
+    );
+
+    expect(screen.getByRole("status", { name: "Cart update" })).toHaveTextContent(
+      "Everyday backpack removed from your cart.",
+    );
+    expect(
+      screen.getByRole("heading", { name: "Insulated travel mug" }),
+    ).toHaveFocus();
+  });
+
+  it("announces explicit removal and focuses the empty-cart heading", async () => {
+    const user = userEvent.setup();
+    renderCart([{ productId: "everyday-backpack", quantity: 2 }]);
+
+    await user.click(
+      screen.getByRole("button", { name: "Remove Everyday backpack" }),
+    );
+
+    expect(screen.getByRole("status", { name: "Cart update" })).toHaveTextContent(
+      "Everyday backpack removed from your cart.",
+    );
+    expect(
+      screen.getByRole("heading", { name: "Your cart is empty" }),
+    ).toHaveFocus();
+  });
+
+  it("announces clearing and focuses the empty-cart heading", async () => {
+    const user = userEvent.setup();
+    renderCart([
+      { productId: "desk-lamp", quantity: 1 },
+      { productId: "travel-mug", quantity: 1 },
+    ]);
+
+    await user.click(screen.getByRole("button", { name: "Clear cart" }));
+
+    expect(screen.getByRole("status", { name: "Cart update" })).toHaveTextContent(
+      "Cart cleared.",
+    );
+    expect(
+      screen.getByRole("heading", { name: "Your cart is empty" }),
+    ).toHaveFocus();
   });
 });
