@@ -53,4 +53,15 @@ export default tseslint.config(
       globals: globals.node,
     },
   },
+  {
+    files: ["tests/**/*.mjs"],
+    ...tseslint.configs.disableTypeChecked,
+    languageOptions: {
+      ...tseslint.configs.disableTypeChecked.languageOptions,
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+      },
+    },
+  },
 );
