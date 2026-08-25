@@ -199,6 +199,91 @@ describe("payment boundary scanner", () => {
     });
   });
 
+  it("allows one dedicated same-origin order API client", async () => {
+    const rootDirectory = await createFixture({
+      path: "src/features/orders/order.api.ts",
+      value: `
+        const DEFAULT_ADMIN_ORDER_LIMIT = 50;
+        export function createOrder() { return fetch("/api/orders"); }
+        export function listOrders() {
+          return fetch(\`/api/admin/orders?limit=\${DEFAULT_ADMIN_ORDER_LIMIT}\`);
+        }
+      `,
+    });
+
+    await expect(runScanner(rootDirectory)).resolves.toMatchObject({ stderr: "" });
+  });
+
+  it.each([
+    [
+      "a dynamic target",
+      `
+        const path = "/api/orders";
+        fetch(path);
+        fetch("/api/admin/orders?limit=50");
+      `,
+    ],
+    [
+      "an unexpected same-origin target",
+      `
+        fetch("/api/orders");
+        fetch("/api/admin/export");
+      `,
+    ],
+    [
+      "a protocol-relative target",
+      `
+        fetch("/api/orders");
+        fetch("//example.invalid/orders");
+      `,
+    ],
+    [
+      "an external target",
+      `
+        fetch("/api/orders");
+        fetch("https://example.invalid/orders");
+      `,
+    ],
+    [
+      "another browser network primitive",
+      `
+        fetch("/api/orders");
+        fetch("/api/admin/orders?limit=50");
+        new WebSocket("/orders");
+      `,
+    ],
+  ])("rejects %s inside the dedicated order API client", async (_name, value) => {
+    const rootDirectory = await createFixture({
+      path: "src/features/orders/order.api.ts",
+      value,
+    });
+
+    const stderr = await runScannerExpectingFailure(rootDirectory);
+    expect(stderr).toMatch(
+      /browser network primitive|remote URL|unexpected fetch target|direct string literal/,
+    );
+  });
+
+  it("rejects browser networking outside the dedicated order API client", async () => {
+    const rootDirectory = await createFixture({
+      path: "src/features/orders/unapproved.ts",
+      value: 'fetch("/api/orders");',
+    });
+
+    const stderr = await runScannerExpectingFailure(rootDirectory);
+    expect(stderr).toContain("browser network primitive");
+  });
+
+  it("scans server source for provider identifiers", async () => {
+    const rootDirectory = await createFixture({
+      path: "server/provider.ts",
+      value: "const provider = paypal;",
+    });
+
+    const stderr = await runScannerExpectingFailure(rootDirectory);
+    expect(stderr).toContain("payment provider identifier or domain");
+  });
+
   it.each(forbiddenFixtures)(
     "rejects $name",
     async ({ expectedCategory, path, value }) => {

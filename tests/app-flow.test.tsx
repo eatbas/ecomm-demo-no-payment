@@ -1,17 +1,50 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { DEMO_CUSTOMER } from "../shared/orders";
 import { App } from "@/app/App";
+import {
+  createCompletedOrder,
+  createCompletedOrderItem,
+  createJsonResponse,
+} from "@/test/orders";
+
+const completedOrder = createCompletedOrder({
+  reference: "CG-FEED1234",
+  createdAt: "2026-08-25T10:00:00.000Z",
+  items: [
+    createCompletedOrderItem({ quantity: 2 }),
+    createCompletedOrderItem({
+      productId: "travel-mug",
+      productName: "Insulated travel mug",
+      unitPriceCents: 2_895,
+      quantity: 1,
+    }),
+  ],
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+function parseRequestBody(requestInit: RequestInit | undefined): unknown {
+  if (typeof requestInit?.body !== "string") {
+    throw new Error("Expected the request body to be a JSON string.");
+  }
+
+  return JSON.parse(requestInit.body) as unknown;
+}
 
 describe("customer shopping flow", () => {
-  it("retains updated cart state while visiting the inert checkout", async () => {
+  it("saves a fixed demo order before clearing the cart", async () => {
+    const fetchSpy = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(createJsonResponse(completedOrder, 201));
+    vi.stubGlobal("fetch", fetchSpy);
     window.history.pushState({}, "", "/");
     const user = userEvent.setup();
     render(<App />);
-
-    expect(screen.getAllByRole("listitem")).toHaveLength(5);
-    expect(screen.getAllByRole("button", { name: /^Add .+ to cart$/ })).toHaveLength(3);
 
     await user.click(
       screen.getByRole("button", { name: "Add Everyday backpack to cart" }),
@@ -27,19 +60,29 @@ describe("customer shopping flow", () => {
         name: "Increase quantity of Everyday backpack",
       }),
     );
-    expect(screen.getByRole("link", { name: "Cart, 3 items" })).toBeInTheDocument();
-
     await user.click(screen.getByRole("link", { name: "Review checkout" }));
     expect(screen.getByRole("main")).toHaveFocus();
     expect(
-      screen.getByText("Payments are not available in this demo."),
-    ).toBeInTheDocument();
+      screen.queryByText("This is a public demo."),
+    ).not.toBeInTheDocument();
     expect(screen.getByText("€186.95")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("link", { name: "Back to cart" }));
-    expect(screen.getByLabelText("Quantity of Everyday backpack")).toHaveTextContent(
-      "2",
-    );
-    expect(screen.getByRole("link", { name: "Cart, 3 items" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Fill with demo account" }));
+    expect(screen.getByLabelText("Email address")).toHaveValue(DEMO_CUSTOMER.email);
+    await user.click(screen.getByRole("button", { name: "Complete order" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Demo order completed" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("CG-FEED1234")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Cart, 0 items" })).toBeInTheDocument();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(parseRequestBody(fetchSpy.mock.calls[0]?.[1])).toMatchObject({
+      demoCustomerId: DEMO_CUSTOMER.id,
+      lines: [
+        { productId: "everyday-backpack", quantity: 2 },
+        { productId: "travel-mug", quantity: 1 },
+      ],
+    });
   });
 });

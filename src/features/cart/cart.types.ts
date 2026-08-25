@@ -16,6 +16,7 @@ export type CartAction =
   | { readonly type: "increment"; readonly productId: ProductId }
   | { readonly type: "decrement"; readonly productId: ProductId }
   | { readonly type: "remove"; readonly productId: ProductId }
+  | { readonly type: "removeCompleted"; readonly lines: readonly CartLine[] }
   | { readonly type: "clear" };
 
 export const EMPTY_CART: CartState = Object.freeze({ lines: Object.freeze([]) });

@@ -27,6 +27,7 @@ docker run --detach \
   --network-alias storefront \
   --read-only \
   --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+  --tmpfs /data:rw,noexec,nosuid,size=32m,uid=1000,gid=1000 \
   "${application_image}" >/dev/null
 
 attempt=1

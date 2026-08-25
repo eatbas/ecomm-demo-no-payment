@@ -5,7 +5,7 @@ import { useCart } from "@/features/cart/CartContext";
 import { cn } from "@/lib/utils";
 
 const navigationLinkClasses =
-  "rounded-full px-4 py-2 text-sm font-semibold outline-none transition-colors hover:bg-secondary focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background motion-reduce:transition-none";
+  "cursor-pointer rounded-full px-4 py-2 text-sm font-semibold outline-none transition-colors hover:bg-secondary focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background motion-reduce:transition-none";
 
 export function AppHeader() {
   const { itemCount } = useCart();

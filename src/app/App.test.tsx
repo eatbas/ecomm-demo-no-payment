@@ -1,7 +1,12 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "@/app/App";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("App", () => {
   it("renders the accessible application shell and catalogue route", () => {
@@ -33,5 +38,35 @@ describe("App", () => {
       "href",
       "/",
     );
+  });
+
+  it("registers the admin route publicly without adding it to customer navigation", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        json: vi.fn().mockResolvedValue({ orders: [] }),
+        ok: true,
+      }),
+    );
+    window.history.replaceState({}, "", "/admin");
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Completed orders" }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "No completed orders" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("navigation", { name: "Primary navigation" }),
+    ).not.toHaveTextContent("Admin");
+    expect(screen.queryByLabelText(/password|credential/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: /sign in|log in/i })).toBeNull();
+    expect(document.title).toBe("Completed orders | Common Goods");
+
+    await user.click(screen.getByRole("link", { name: "Shop" }));
+    expect(document.title).toBe("Common Goods");
   });
 });

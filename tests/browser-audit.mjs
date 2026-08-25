@@ -154,24 +154,110 @@ async function assertCustomerJourney(page) {
 
   await page.getByRole("heading", { name: "Checkout", level: 1 }).waitFor();
   await page.waitForFunction(() => document.activeElement?.id === "main-content");
-  await page.getByText("Payments are not available in this demo.").waitFor();
-  assert.equal(await page.locator("form, input, select, textarea, iframe").count(), 0);
+  await page.getByRole("button", { name: "Fill with demo account" }).waitFor();
+  assert.equal(await page.locator("input").count(), 7);
+  assert.equal(await page.locator("iframe").count(), 0);
+  assert.equal(await hasHorizontalOverflow(page), false, "checkout horizontal overflow");
+
+  await page.getByRole("button", { name: "Fill with demo account" }).click();
+  assert.equal(await page.getByLabel("Email address").inputValue(), "alex@example.test");
+  await page.getByRole("button", { name: "Complete order" }).click();
+  await page.getByRole("heading", { name: "Demo order completed" }).waitFor();
+  await page.getByText("Payment not configured").waitFor();
   assert.equal(
-    await page.getByRole("button", { name: /pay|buy|place order|submit/i }).count(),
-    0,
+    await hasHorizontalOverflow(page),
+    false,
+    "confirmation horizontal overflow",
   );
 
-  await page.getByRole("link", { name: "Back to cart" }).click();
-  await page.waitForFunction(() => document.activeElement?.id === "main-content");
+  const reference = await page
+    .locator("dd")
+    .filter({ hasText: /^CG-[A-Z0-9]{8}$/ })
+    .textContent();
+  assert.match(reference ?? "", /^CG-[A-Z0-9]{8}$/);
+  return reference;
+}
+
+async function assertAdminKeyboardFocus(page, viewportName) {
+  await page.keyboard.press("Tab");
+  const skipLink = page.locator(":focus");
   assert.equal(
-    await page
-      .getByRole("status", {
-        name: "Quantity of Everyday backpack",
-        exact: true,
-      })
-      .textContent(),
-    "2",
-    "cart quantity must survive checkout navigation",
+    await skipLink.textContent(),
+    "Skip to main content",
+    `${viewportName}: admin skip link must be the first keyboard target`,
+  );
+  assert.notEqual(
+    await skipLink.boundingBox(),
+    null,
+    `${viewportName}: focused admin skip link must be visible`,
+  );
+
+  await page.keyboard.press("Tab");
+  const applicationLink = page.locator(":focus");
+  assert.equal(
+    await applicationLink.textContent(),
+    "Common Goods",
+    `${viewportName}: application link must follow the skip link`,
+  );
+  assert.notEqual(
+    await applicationLink.boundingBox(),
+    null,
+    `${viewportName}: focused application link must be visible`,
+  );
+  assert.notEqual(
+    await applicationLink.evaluate((element) => getComputedStyle(element).boxShadow),
+    "none",
+    `${viewportName}: application link must have a visible focus ring`,
+  );
+}
+
+async function assertAdminResponsiveLayout(page, viewportName) {
+  const table = page.locator("table");
+  const cardList = page.locator('ul[aria-label="Completed demo orders"]');
+  const desktop = viewportName === "desktop";
+
+  assert.equal(
+    await table.isVisible(),
+    desktop,
+    `${viewportName}: desktop table visibility`,
+  );
+  assert.equal(
+    await cardList.isVisible(),
+    !desktop,
+    `${viewportName}: mobile card visibility`,
+  );
+}
+
+async function assertEmptyAdminPage(page, viewportName) {
+  await page.goto(new URL("/admin", baseUrl).href, { waitUntil: "networkidle" });
+  await page.getByRole("heading", { name: "No completed orders", level: 2 }).waitFor();
+  assert.equal(await page.locator("table").count(), 0);
+  assert.equal(await page.locator('ul[aria-label="Completed demo orders"]').count(), 0);
+  assert.equal(
+    await hasHorizontalOverflow(page),
+    false,
+    `${viewportName}: empty admin horizontal overflow`,
+  );
+  await assertAdminKeyboardFocus(page, viewportName);
+}
+
+async function assertAdminPage(page, viewportName, reference) {
+  await page.goto(new URL("/admin", baseUrl).href, { waitUntil: "networkidle" });
+  await page.getByRole("heading", { name: "Completed orders", level: 1 }).waitFor();
+  await assertAdminResponsiveLayout(page, viewportName);
+  const visibleOrders =
+    viewportName === "desktop"
+      ? page.locator("table")
+      : page.locator('ul[aria-label="Completed demo orders"]');
+  await visibleOrders.getByText(reference, { exact: true }).waitFor();
+  await visibleOrders
+    .getByText("Payment not configured", { exact: true })
+    .first()
+    .waitFor();
+  assert.equal(
+    await hasHorizontalOverflow(page),
+    false,
+    `${viewportName}: admin horizontal overflow`,
   );
 }
 
@@ -187,12 +273,29 @@ try {
     const failures = monitorPage(page);
 
     try {
+      await assertEmptyAdminPage(page, viewport.name);
+      assert.deepEqual(failures, [], `${viewport.name}: empty admin diagnostics`);
+    } finally {
+      await context.close();
+    }
+  }
+
+  for (const viewport of viewportCases) {
+    const context = await browser.newContext({
+      serviceWorkers: "block",
+      viewport: { width: viewport.width, height: viewport.height },
+    });
+    const page = await context.newPage();
+    const failures = monitorPage(page);
+
+    try {
       await assertCatalogue(page, viewport.name);
       await assertAddToCartFeedback(page, viewport.name);
       if (viewport.name === "desktop") {
         await assertConfirmationExpires(page);
-        await assertCustomerJourney(page);
       }
+      const completedOrderReference = await assertCustomerJourney(page);
+      await assertAdminPage(page, viewport.name, completedOrderReference);
       assert.deepEqual(failures, [], `${viewport.name}: browser diagnostics`);
     } finally {
       await context.close();

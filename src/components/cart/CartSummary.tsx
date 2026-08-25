@@ -31,8 +31,8 @@ export function CartSummary({ subtotalCents }: CartSummaryProps) {
         </p>
         <Separator className="my-5" />
         <p className="text-sm leading-6 text-muted-foreground">
-          Checkout is provided only to show the next page. No order or payment
-          can be submitted.
+          Checkout can save a synthetic demo order. It does not collect or confirm
+          payment.
         </p>
       </CardContent>
       <CardFooter className="flex-col gap-3">

@@ -26,5 +26,5 @@
     "jsx": "react-jsx",
     "types": ["node", "vitest/globals", "@testing-library/jest-dom"]
   },
-  "include": ["src", "tests"]
+  "include": ["src", "tests", "shared"]
 }

@@ -55,8 +55,15 @@
   }
 
   button,
-  a {
+  a,
+  [role="button"] {
     -webkit-tap-highlight-color: transparent;
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
   }
 
   ::selection {

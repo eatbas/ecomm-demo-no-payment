@@ -26,6 +26,7 @@ export interface CartContextValue {
   incrementItem(this: void, productId: ProductId): void;
   decrementItem(this: void, productId: ProductId): void;
   removeItem(this: void, productId: ProductId): void;
+  removeCompletedLines(this: void, lines: readonly CartLine[]): void;
   clearCart(this: void): void;
 }
 
@@ -58,6 +59,10 @@ export function CartProvider({ children }: CartProviderProps) {
     dispatch({ type: "remove", productId });
   }, []);
 
+  const removeCompletedLines = useCallback((lines: readonly CartLine[]) => {
+    dispatch({ type: "removeCompleted", lines });
+  }, []);
+
   const clearCart = useCallback(() => {
     dispatch({ type: "clear" });
   }, []);
@@ -71,6 +76,7 @@ export function CartProvider({ children }: CartProviderProps) {
       incrementItem,
       decrementItem,
       removeItem,
+      removeCompletedLines,
       clearCart,
     }),
     [
@@ -80,6 +86,7 @@ export function CartProvider({ children }: CartProviderProps) {
       incrementItem,
       decrementItem,
       removeItem,
+      removeCompletedLines,
       clearCart,
     ],
   );

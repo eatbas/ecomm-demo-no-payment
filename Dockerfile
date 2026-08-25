@@ -21,24 +21,34 @@ FROM checks AS build
 
 RUN npm run build
 
-# nginx-unprivileged 1.28.2 on Alpine Linux 3.23 runs as UID/GID 101.
-FROM nginxinc/nginx-unprivileged:1.28.2-alpine3.23@sha256:7377697a821c131a924a7105fafbe7414db4e9fcc77a6f08f776f33f141ec3f8 AS runtime
+FROM deps AS production-dependencies
+
+RUN npm prune --omit=dev
+
+# The same immutable Node.js input runs the compiled API and static storefront.
+FROM node:22.22.2-alpine3.23@sha256:8ea2348b068a9544dae7317b4f3aafcdc032df1647bb7d768a05a5cad1a7683f AS runtime
+
+WORKDIR /app
+
+ENV NODE_ENV=production \
+    HOST=0.0.0.0 \
+    PORT=8080 \
+    ORDER_DB_PATH=/data/orders.sqlite
 
 USER root
-COPY deploy/nginx.conf /etc/nginx/nginx.conf
-RUN rm -rf /usr/share/nginx/html
-COPY --from=build --chown=101:101 /app/dist/ /usr/share/nginx/html/
-RUN --mount=type=bind,from=build,source=/app/dist,target=/tmp/expected,ro \
-    diff -qr /tmp/expected /usr/share/nginx/html
+COPY --from=production-dependencies --chown=node:node /app/node_modules/ ./node_modules/
+COPY --chown=node:node package.json package-lock.json ./
+COPY --from=build --chown=node:node /app/dist/ ./dist/
+COPY --from=build --chown=node:node /app/dist-server/ ./dist-server/
+COPY --from=build --chown=node:node /app/server/db/migrations/ ./dist-server/server/db/migrations/
+RUN mkdir /data && chown node:node /data
 
-USER 101:101
+USER node
 EXPOSE 8080
 
-# The image's templating entrypoint is unnecessary and attempts read-only edits.
-ENTRYPOINT ["nginx"]
-CMD ["-g", "daemon off;"]
+CMD ["node", "dist-server/server/start.js"]
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD ["wget", "--quiet", "--spider", "http://127.0.0.1:8080/healthz"]
 
-STOPSIGNAL SIGQUIT
+STOPSIGNAL SIGTERM

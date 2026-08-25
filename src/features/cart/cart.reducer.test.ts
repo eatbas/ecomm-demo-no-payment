@@ -90,6 +90,31 @@ describe("cartReducer", () => {
     expect(cartReducer(state, { type: "clear" })).toEqual(EMPTY_CART);
   });
 
+  it("removes only completed lines whose quantities still match", () => {
+    const state: CartState = {
+      lines: [
+        { productId: "everyday-backpack", quantity: 3 },
+        { productId: "desk-lamp", quantity: 1 },
+        { productId: "travel-mug", quantity: 2 },
+      ],
+    };
+
+    expect(
+      cartReducer(state, {
+        type: "removeCompleted",
+        lines: [
+          { productId: "everyday-backpack", quantity: 2 },
+          { productId: "desk-lamp", quantity: 1 },
+        ],
+      }),
+    ).toEqual({
+      lines: [
+        { productId: "everyday-backpack", quantity: 3 },
+        { productId: "travel-mug", quantity: 2 },
+      ],
+    });
+  });
+
   it("returns the same state for operations on absent lines", () => {
     expect(
       cartReducer(EMPTY_CART, {

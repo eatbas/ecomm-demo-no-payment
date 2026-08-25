@@ -1,7 +1,6 @@
-export type ProductId =
-  | "everyday-backpack"
-  | "desk-lamp"
-  | "travel-mug";
+import type { ProductId } from "../../shared/catalogue";
+
+export type { ProductId } from "../../shared/catalogue";
 
 export interface Product {
   readonly id: ProductId;

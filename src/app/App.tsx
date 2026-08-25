@@ -22,16 +22,26 @@ function RouteFocusManager() {
   return null;
 }
 
-export function App() {
-  useEffect(() => {
-    document.title = "Common Goods";
-  }, []);
+function RouteDocumentTitle() {
+  const { pathname } = useLocation();
 
+  useEffect(() => {
+    document.title =
+      pathname === "/admin"
+        ? "Completed orders | Common Goods"
+        : "Common Goods";
+  }, [pathname]);
+
+  return null;
+}
+
+export function App() {
   return (
     <AppProviders>
       <BrowserRouter>
         <div className="flex min-h-screen flex-col">
           <RouteFocusManager />
+          <RouteDocumentTitle />
           <a
             href="#main-content"
             className="sr-only z-50 rounded-md bg-primary px-4 py-3 text-primary-foreground focus:not-sr-only focus:fixed focus:left-4 focus:top-4"

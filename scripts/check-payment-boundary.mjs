@@ -23,6 +23,17 @@ const allowedSvgNamespaces = [
   "http://www.w3.org/2000/svg",
   "http://www.w3.org/1999/xlink",
 ];
+const allowedBrowserNetworkFile = "src/features/orders/order.api.ts";
+const allowedOrderFetchTargets = new Set([
+  '"/api/orders"',
+  "'/api/orders'",
+  "`/api/orders`",
+  '"/api/admin/orders?limit=50"',
+  "'/api/admin/orders?limit=50'",
+  "`/api/admin/orders?limit=50`",
+  "`/api/admin/orders?limit=${DEFAULT_ADMIN_ORDER_LIMIT}`",
+]);
+const browserFetchPattern = /\bfetch\s*\(/;
 
 const packagePolicies = [
   {
@@ -72,7 +83,7 @@ const browserPolicies = [
   {
     name: "browser network primitive",
     patterns: [
-      /\bfetch\s*\(/,
+      browserFetchPattern,
       /\bXMLHttpRequest\b/,
       /\bWebSocket\b/,
       /\bEventSource\b/,
@@ -166,6 +177,40 @@ function removeAllowedSvgNamespaces(path, contents) {
   );
 }
 
+function inspectAllowedOrderApiClient(path, contents, violations) {
+  const fetchCount = contents.match(/\bfetch\s*\(/g)?.length ?? 0;
+  const fetchTargets = [
+    ...contents.matchAll(/\bfetch\s*\(\s*([^,\r\n)]+)(?=\s*(?:,|\)))/g),
+  ].map((match) => match[1]?.trim());
+
+  if (fetchCount !== 2) {
+    violations.push(
+      `${path}: order API client must contain exactly two endpoint-specific fetch primitives`,
+    );
+  }
+
+  if (fetchTargets.length !== fetchCount) {
+    violations.push(`${path}: every fetch target must be a direct string literal`);
+  }
+
+  for (const fetchTarget of fetchTargets) {
+    if (fetchTarget === undefined || !allowedOrderFetchTargets.has(fetchTarget)) {
+      violations.push(`${path}: unexpected fetch target ${fetchTarget ?? "unknown"}`);
+    }
+  }
+
+  const uniqueTargets = new Set(fetchTargets);
+  const hasCreateTarget = [...uniqueTargets].some((target) =>
+    target?.includes("/api/orders"),
+  );
+  const hasAdminTarget = [...uniqueTargets].some((target) =>
+    target?.includes("/api/admin/orders?limit="),
+  );
+  if (!hasCreateTarget || !hasAdminTarget) {
+    violations.push(`${path}: both approved order API targets are required`);
+  }
+}
+
 export async function inspectPaymentBoundary(rootDirectory = process.cwd()) {
   const absoluteRoot = resolve(rootDirectory);
   const manifestPath = join(absoluteRoot, "package.json");
@@ -187,6 +232,12 @@ export async function inspectPaymentBoundary(rootDirectory = process.cwd()) {
   const sourceFiles = (await listFiles(join(absoluteRoot, "src"))).filter((path) =>
     sourceExtensions.has(extname(path)),
   );
+  const sharedFiles = (await listFiles(join(absoluteRoot, "shared"))).filter((path) =>
+    sourceExtensions.has(extname(path)),
+  );
+  const serverFiles = (await listFiles(join(absoluteRoot, "server"))).filter((path) =>
+    sourceExtensions.has(extname(path)),
+  );
   const publicFiles = (await listFiles(join(absoluteRoot, "public"))).filter((path) =>
     publicExtensions.has(extname(path)),
   );
@@ -194,11 +245,40 @@ export async function inspectPaymentBoundary(rootDirectory = process.cwd()) {
 
   for (const path of browserFiles) {
     const contents = removeAllowedSvgNamespaces(path, await readFile(path, "utf8"));
-    inspectValue(relative(absoluteRoot, path), contents, browserPolicies, violations);
+    const relativePath = relative(absoluteRoot, path);
+    const policies = browserPolicies.map((policy) =>
+      relativePath === allowedBrowserNetworkFile &&
+      policy.name === "browser network primitive"
+        ? {
+            ...policy,
+            patterns: policy.patterns.filter(
+              (pattern) => pattern !== browserFetchPattern,
+            ),
+          }
+        : policy,
+    );
+    inspectValue(relativePath, contents, policies, violations);
+
+    if (relativePath === allowedBrowserNetworkFile) {
+      inspectAllowedOrderApiClient(relativePath, contents, violations);
+    }
+  }
+
+  const nonBrowserPolicies = browserPolicies.filter(
+    (policy) => policy.name !== "browser network primitive",
+  );
+  for (const path of [...sharedFiles, ...serverFiles]) {
+    inspectValue(
+      relative(absoluteRoot, path),
+      await readFile(path, "utf8"),
+      nonBrowserPolicies,
+      violations,
+    );
   }
 
   return {
-    inspectedFileCount: browserFiles.length + 2,
+    inspectedFileCount:
+      browserFiles.length + sharedFiles.length + serverFiles.length + 2,
     violations,
   };
 }

@@ -8,6 +8,13 @@ coverage
 .vitest
 playwright-report
 test-results
+.data
+data
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
+*.sqlite-export
 .idea
 .vscode
 *.swp

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# start.sh — run the Vite development server in the pinned Node container.
+# start.sh — run the web and order API development servers in pinned Node.
 #
-# This static storefront has no backend, database, payment provider, or
-# runtime secrets. Vite would embed any VITE_* values in the public bundle,
-# so this script does not create or load a .env file.
+# The order API persists synthetic demo data in a named Docker volume. No
+# payment provider or runtime secret is used, and this script never creates or
+# loads an environment file.
 #
 # Usage:
 #   ./start.sh              start in the background and wait until ready
@@ -22,6 +22,7 @@ readonly SCRIPT_DIR
 
 readonly CONTAINER_NAME=ecomm-demo-no-payment-dev
 readonly VOLUME_NAME=ecomm-demo-node-modules
+readonly ORDER_VOLUME_NAME=ecomm-demo-order-data
 readonly HOST_BIND=127.0.0.1
 readonly HOST_PORT=5173
 readonly READY_URL="http://${HOST_BIND}:${HOST_PORT}/healthz"
@@ -63,16 +64,12 @@ container_exists() {
 }
 
 explain_env_policy() {
-  if [[ -e $SCRIPT_DIR/.env || -e $SCRIPT_DIR/.env.local ]]; then
-    printf '%s: a local .env file exists, but this application does not read it. Vite may still load VITE_* keys into the client bundle; remove those files if they were added by mistake.\n' "$SCRIPT_NAME" >&2
-    return
-  fi
-
-  printf 'No .env file is used: the storefront has no runtime configuration or secrets.\n'
+  printf 'Repository .env files are disabled; development configuration is non-secret and set by the runner.\n'
 }
 
 ensure_volume() {
   "${DOCKER[@]}" volume create "$VOLUME_NAME" >/dev/null
+  "${DOCKER[@]}" volume create "$ORDER_VOLUME_NAME" >/dev/null
 }
 
 remove_stale_container() {
@@ -89,6 +86,7 @@ run_dev_container() {
     --publish "${HOST_BIND}:${HOST_PORT}:5173"
     --volume "${SCRIPT_DIR}:/app"
     --volume "${VOLUME_NAME}:/app/node_modules"
+    --volume "${ORDER_VOLUME_NAME}:/app/.data"
     --workdir /app
   )
 
@@ -148,6 +146,7 @@ Health probe:       ${READY_URL}
 Catalogue:          http://${HOST_BIND}:${HOST_PORT}/
 Cart:               http://${HOST_BIND}:${HOST_PORT}/cart
 Checkout:           http://${HOST_BIND}:${HOST_PORT}/checkout
+Admin orders:       http://${HOST_BIND}:${HOST_PORT}/admin
 
 Follow logs with: ./start.sh logs
 Stop with:        ./start.sh down
@@ -195,7 +194,8 @@ cmd_down() {
   fi
 
   "${DOCKER[@]}" rm --force "$CONTAINER_NAME" >/dev/null
-  printf 'Stopped %s. Named volume %s was kept.\n' "$CONTAINER_NAME" "$VOLUME_NAME"
+  printf 'Stopped %s. Named volumes %s and %s were kept.\n' \
+    "$CONTAINER_NAME" "$VOLUME_NAME" "$ORDER_VOLUME_NAME"
 }
 
 main() {

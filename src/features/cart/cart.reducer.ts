@@ -74,6 +74,24 @@ function addLine(state: CartState, productId: CartLine["productId"]): CartState 
     : updateQuantity(state, productId, 1);
 }
 
+function removeCompletedLines(
+  state: CartState,
+  completedLines: readonly CartLine[],
+): CartState {
+  const completedQuantityByProduct = new Map(
+    completedLines.map((line) => [line.productId, line.quantity]),
+  );
+  const remainingLines = state.lines.filter(
+    (line) => completedQuantityByProduct.get(line.productId) !== line.quantity,
+  );
+
+  if (remainingLines.length === state.lines.length) {
+    return state;
+  }
+
+  return remainingLines.length === 0 ? EMPTY_CART : { lines: remainingLines };
+}
+
 export function cartReducer(state: CartState, action: CartAction): CartState {
   const validState = normaliseState(state);
 
@@ -86,6 +104,8 @@ export function cartReducer(state: CartState, action: CartAction): CartState {
       return updateQuantity(validState, action.productId, -1);
     case "remove":
       return removeLine(validState, action.productId);
+    case "removeCompleted":
+      return removeCompletedLines(validState, action.lines);
     case "clear":
       return validState.lines.length === 0 ? validState : EMPTY_CART;
   }
