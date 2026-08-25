@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Avenir Next", Avenir, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-display: Georgia, "Times New Roman", serif;
+  --color-background: #f6f5f1;
+  --color-foreground: #17201c;
+  --color-card: #fffefa;
+  --color-card-foreground: #17201c;
+  --color-primary: #173f35;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #e2e8df;
+  --color-secondary-foreground: #173f35;
+  --color-muted: #ecebe6;
+  --color-muted-foreground: #59645f;
+  --color-accent: #b95f3c;
+  --color-accent-foreground: #ffffff;
+  --color-destructive: #a73535;
+  --color-destructive-foreground: #ffffff;
+  --color-border: #d8d8d0;
+  --color-ring: #b95f3c;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    min-width: 320px;
+    min-height: 100vh;
+    margin: 0;
+    background: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    text-rendering: optimizeLegibility;
+  }
+
+  button,
+  a {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  ::selection {
+    background: #d8a18c;
+    color: #17201c;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
