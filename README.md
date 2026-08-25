@@ -21,6 +21,7 @@ The checkout route is intentionally non-functional. It has no form, transaction 
 - React and React Router provide the application shell and client-side routes.
 - Typed catalogue data contains the three fixed products; prices are represented as integer euro cents.
 - One cart context owns state, a pure reducer applies changes, and defensive storage helpers persist validated identifiers and quantities.
+- A separate toast context queues transient add-to-cart confirmations. Its pure reducer keeps one message per product and bounds the queue, one always-present polite live region announces each confirmation, and the visible stack sits outside the accessibility tree, the page layout, and the pointer-event path.
 - Local shadcn/ui source supplies the small accessible component set. Tailwind CSS supplies design tokens and responsive layout.
 - Vite compiles static files to `dist/`. nginx serves only that output, applies security and cache headers, and falls back to `index.html` for extensionless client routes.
 - The multi-stage Docker build separates dependency installation, checks, compilation, and the minimal runtime. No source, tests, npm cache, or `node_modules` are copied to the runtime image.
@@ -94,7 +95,7 @@ Run the maintained Playwright audit after customer-facing, routing, or styling c
 ./scripts/run-browser-audit.sh
 ```
 
-The script builds the production image and a pinned Playwright 1.61.0 runner, starts the application on an isolated temporary Docker network, and always removes its temporary container and network. It checks the catalogue and keyboard entry point at 1440 px, 390 px, and 320 px; the desktop pass also exercises the cart and inert checkout journey. Console errors, page errors, failed requests, external requests, unexpected form controls, horizontal overflow, and lost cart state fail the audit.
+The script builds the production image and a pinned Playwright 1.61.0 runner, starts the application on an isolated temporary Docker network, and always removes its temporary container and network. It checks the catalogue and keyboard entry point at 1440 px, 390 px, and 320 px, and confirms that adding a product shows a visible confirmation without shifting the catalogue cards or overflowing the viewport; the desktop pass also waits for that confirmation to expire and then exercises the cart and inert checkout journey. Console errors, page errors, failed requests, external requests, unexpected form controls, horizontal overflow, and lost cart state fail the audit.
 
 ## Coolify deployment
 

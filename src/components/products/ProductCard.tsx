@@ -1,5 +1,3 @@
-import { useState } from "react";
-
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,6 +9,7 @@ import {
 } from "@/components/ui/card";
 import { useCart } from "@/features/cart/CartContext";
 import { MAX_CART_QUANTITY } from "@/features/cart/cart.types";
+import { useToast } from "@/features/toast/ToastContext";
 import { formatCurrency } from "@/lib/currency";
 import type { Product } from "@/types/product";
 
@@ -20,7 +19,7 @@ interface ProductCardProps {
 
 export function ProductCard({ product }: ProductCardProps) {
   const cart = useCart();
-  const [confirmation, setConfirmation] = useState("");
+  const { showToast } = useToast();
   const quantity =
     cart.lines.find((line) => line.productId === product.id)?.quantity ?? 0;
   const isAtQuantityLimit = quantity >= MAX_CART_QUANTITY;
@@ -31,16 +30,15 @@ export function ProductCard({ product }: ProductCardProps) {
     }
 
     cart.addItem(product.id);
-    setConfirmation(
-      `${product.name} added to your cart. Quantity is now ${quantity + 1}.`,
-    );
+    showToast({
+      groupKey: product.id,
+      title: "Added to cart",
+      description: `${product.name}, quantity ${quantity + 1}`,
+    });
   }
 
   return (
     <Card className="flex h-full flex-col overflow-hidden">
-      <p className="sr-only" role="status" aria-live="polite">
-        {confirmation}
-      </p>
       <div className="aspect-[4/3] overflow-hidden bg-secondary/60">
         <img
           src={product.imagePath}

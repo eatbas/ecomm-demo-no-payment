@@ -19,6 +19,20 @@
   --color-destructive-foreground: #ffffff;
   --color-border: #d8d8d0;
   --color-ring: #a94f32;
+
+  --animate-toast-in: toast-in 180ms ease-out;
+
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(0.75rem);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
 }
 
 @layer base {

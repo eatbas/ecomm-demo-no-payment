@@ -28,7 +28,12 @@ export default tseslint.config(
         "warn",
         {
           allowConstantExport: true,
-          allowExportNames: ["badgeVariants", "buttonVariants", "useCart"],
+          allowExportNames: [
+            "badgeVariants",
+            "buttonVariants",
+            "useCart",
+            "useToast",
+          ],
         },
       ],
       "@typescript-eslint/consistent-type-imports": "error",

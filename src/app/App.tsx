@@ -1,9 +1,10 @@
 import { useEffect, useRef } from "react";
 import { BrowserRouter, useLocation } from "react-router";
 
+import { AppProviders } from "@/app/AppProviders";
 import { AppRoutes } from "@/app/AppRoutes";
 import { AppHeader } from "@/components/layout/AppHeader";
-import { CartProvider } from "@/features/cart/CartContext";
+import { ToastRegion } from "@/components/toast/ToastRegion";
 
 function RouteFocusManager() {
   const { pathname } = useLocation();
@@ -27,7 +28,7 @@ export function App() {
   }, []);
 
   return (
-    <CartProvider>
+    <AppProviders>
       <BrowserRouter>
         <div className="flex min-h-screen flex-col">
           <RouteFocusManager />
@@ -44,8 +45,9 @@ export function App() {
           <footer className="border-t border-border px-4 py-6 text-center text-sm text-muted-foreground">
             Common Goods demonstration shop
           </footer>
+          <ToastRegion />
         </div>
       </BrowserRouter>
-    </CartProvider>
+    </AppProviders>
   );
 }

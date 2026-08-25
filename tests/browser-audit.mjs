@@ -9,11 +9,19 @@ if (!new Set(["http:", "https:"]).has(baseUrl.protocol)) {
   throw new Error("BROWSER_AUDIT_BASE_URL must use HTTP or HTTPS.");
 }
 
+const confirmationText = "Everyday backpack, quantity 1";
+
 const viewportCases = [
   { name: "desktop", width: 1440, height: 1000 },
   { name: "mobile", width: 390, height: 844 },
   { name: "minimum", width: 320, height: 720 },
 ];
+
+function hasHorizontalOverflow(page) {
+  return page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth,
+  );
+}
 
 function monitorPage(page) {
   const failures = [];
@@ -60,10 +68,11 @@ async function assertCatalogue(page, viewportName) {
     `${viewportName}: focused skip link must be visible`,
   );
 
-  const hasHorizontalOverflow = await page.evaluate(
-    () => document.documentElement.scrollWidth > window.innerWidth,
+  assert.equal(
+    await hasHorizontalOverflow(page),
+    false,
+    `${viewportName}: horizontal overflow`,
   );
-  assert.equal(hasHorizontalOverflow, false, `${viewportName}: horizontal overflow`);
 }
 
 function roundedBox(box) {
@@ -89,7 +98,7 @@ async function measureCatalogueCards(page) {
   );
 }
 
-async function assertAddDoesNotShiftCards(page, viewportName) {
+async function assertAddToCartFeedback(page, viewportName) {
   await page.evaluate(() => {
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
@@ -107,12 +116,34 @@ async function assertAddDoesNotShiftCards(page, viewportName) {
     `${viewportName}: adding to cart must not shift catalogue card boxes`,
   );
 
-  const confirmationBox = await page.getByText(/added to your cart/i).boundingBox();
+  const confirmation = page.getByText(confirmationText, { exact: true });
+  await confirmation.waitFor();
+
+  const confirmationBox = await confirmation.boundingBox();
   assert.ok(
-    confirmationBox === null ||
-      (confirmationBox.width <= 1 && confirmationBox.height <= 1),
-    `${viewportName}: add-to-cart confirmation must stay visually hidden`,
+    confirmationBox !== null &&
+      confirmationBox.width > 1 &&
+      confirmationBox.height > 1,
+    `${viewportName}: add-to-cart confirmation must be visible`,
   );
+
+  const viewportSize = page.viewportSize();
+  assert.ok(
+    confirmationBox.x >= 0 &&
+      confirmationBox.x + confirmationBox.width <= viewportSize.width,
+    `${viewportName}: add-to-cart confirmation must stay inside the viewport`,
+  );
+  assert.equal(
+    await hasHorizontalOverflow(page),
+    false,
+    `${viewportName}: horizontal overflow after add-to-cart confirmation`,
+  );
+}
+
+async function assertConfirmationExpires(page) {
+  await page
+    .getByText(confirmationText, { exact: true })
+    .waitFor({ state: "detached", timeout: 10_000 });
 }
 
 async function assertCustomerJourney(page) {
@@ -157,8 +188,9 @@ try {
 
     try {
       await assertCatalogue(page, viewport.name);
-      await assertAddDoesNotShiftCards(page, viewport.name);
+      await assertAddToCartFeedback(page, viewport.name);
       if (viewport.name === "desktop") {
+        await assertConfirmationExpires(page);
         await assertCustomerJourney(page);
       }
       assert.deepEqual(failures, [], `${viewport.name}: browser diagnostics`);

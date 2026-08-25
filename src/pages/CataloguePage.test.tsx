@@ -1,15 +1,15 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import { AppProviders } from "@/app/AppProviders";
 import { CataloguePage } from "@/pages/CataloguePage";
-import { CartProvider } from "@/features/cart/CartContext";
 
 describe("CataloguePage", () => {
   it("renders the complete three-product catalogue as a semantic list", () => {
     render(
-      <CartProvider>
+      <AppProviders>
         <CataloguePage />
-      </CartProvider>,
+      </AppProviders>,
     );
 
     expect(
