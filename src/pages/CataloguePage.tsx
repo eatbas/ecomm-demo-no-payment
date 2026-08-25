@@ -22,9 +22,9 @@ export function CataloguePage() {
         </div>
 
         <h2 className="sr-only">Available products</h2>
-        <ul className="mt-10 grid list-none gap-6 p-0 sm:grid-cols-2 lg:mt-12 lg:grid-cols-3">
+        <ul className="mt-10 grid list-none items-stretch gap-6 p-0 sm:grid-cols-2 lg:mt-12 lg:grid-cols-3">
           {products.map((product) => (
-            <li key={product.id}>
+            <li key={product.id} className="h-full">
               <ProductCard product={product} />
             </li>
           ))}

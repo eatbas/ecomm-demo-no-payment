@@ -4,13 +4,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
-  CardContent,
   CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import { useCart } from "@/features/cart/CartContext";
+import { MAX_CART_QUANTITY } from "@/features/cart/cart.types";
 import { formatCurrency } from "@/lib/currency";
 import type { Product } from "@/types/product";
 
@@ -21,14 +21,26 @@ interface ProductCardProps {
 export function ProductCard({ product }: ProductCardProps) {
   const cart = useCart();
   const [confirmation, setConfirmation] = useState("");
+  const quantity =
+    cart.lines.find((line) => line.productId === product.id)?.quantity ?? 0;
+  const isAtQuantityLimit = quantity >= MAX_CART_QUANTITY;
 
   function handleAddToCart() {
+    if (isAtQuantityLimit) {
+      return;
+    }
+
     cart.addItem(product.id);
-    setConfirmation(`${product.name} added to your cart.`);
+    setConfirmation(
+      `${product.name} added to your cart. Quantity is now ${quantity + 1}.`,
+    );
   }
 
   return (
     <Card className="flex h-full flex-col overflow-hidden">
+      <p className="sr-only" role="status" aria-live="polite">
+        {confirmation}
+      </p>
       <div className="aspect-[4/3] overflow-hidden bg-secondary/60">
         <img
           src={product.imagePath}
@@ -48,23 +60,19 @@ export function ProductCard({ product }: ProductCardProps) {
         <CardTitle>{product.name}</CardTitle>
         <CardDescription>{product.description}</CardDescription>
       </CardHeader>
-      <CardContent className="pb-3">
-        <p
-          role="status"
-          aria-live="polite"
-          className="min-h-6 text-sm font-medium text-primary"
-        >
-          {confirmation}
-        </p>
-      </CardContent>
       <CardFooter>
         <Button
           type="button"
           className="w-full"
-          aria-label={`Add ${product.name} to cart`}
+          aria-label={
+            isAtQuantityLimit
+              ? `${product.name} cart limit reached`
+              : `Add ${product.name} to cart`
+          }
+          disabled={isAtQuantityLimit}
           onClick={handleAddToCart}
         >
-          Add to cart
+          {isAtQuantityLimit ? "Cart limit reached" : "Add to cart"}
         </Button>
       </CardFooter>
     </Card>

@@ -13,7 +13,7 @@ export function AppHeader() {
 
   return (
     <header className="border-b border-border bg-card/95">
-      <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
+      <div className="mx-auto flex min-h-16 w-full max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
         <Link
           to="/"
           className="rounded-md font-display text-xl font-bold tracking-tight text-primary outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:text-2xl"
@@ -21,7 +21,7 @@ export function AppHeader() {
           Common Goods
         </Link>
 
-        <nav aria-label="Primary navigation">
+        <nav aria-label="Primary navigation" className="shrink-0">
           <ul className="flex items-center gap-1 sm:gap-2">
             <li>
               <NavLink
@@ -47,7 +47,10 @@ export function AppHeader() {
                 }
               >
                 <span>Cart</span>
-                <Badge aria-hidden="true" className="min-w-7 justify-center px-2">
+                <Badge
+                  aria-hidden="true"
+                  className="min-w-[2.25rem] justify-center px-2 tabular-nums"
+                >
                   {itemCount}
                 </Badge>
               </NavLink>

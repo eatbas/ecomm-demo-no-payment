@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 import { ProductCard } from "@/components/products/ProductCard";
 import { products } from "@/data/products";
 import { CartProvider } from "@/features/cart/CartContext";
+import { MAX_CART_QUANTITY } from "@/features/cart/cart.types";
+import { seedStoredCart } from "@/test/cart";
 
 describe("ProductCard", () => {
   it("exposes product details and adds the product with the keyboard", async () => {
@@ -31,8 +33,35 @@ describe("ProductCard", () => {
     expect(addButton).toHaveFocus();
     await user.keyboard("{Enter}");
 
-    expect(screen.getByRole("status")).toHaveTextContent(
-      `${product.name} added to your cart.`,
+    const status = screen.getByRole("status");
+    expect(status).toHaveClass("sr-only");
+    expect(status).toHaveTextContent(
+      `${product.name} added to your cart. Quantity is now 1.`,
     );
+
+    await user.keyboard("{Enter}");
+    expect(status).toHaveTextContent(
+      `${product.name} added to your cart. Quantity is now 2.`,
+    );
+  });
+
+  it("disables adding a product when its cart line reaches the limit", () => {
+    const product = products[0];
+    seedStoredCart([
+      { productId: product.id, quantity: MAX_CART_QUANTITY },
+    ]);
+
+    render(
+      <CartProvider>
+        <ProductCard product={product} />
+      </CartProvider>,
+    );
+
+    expect(
+      screen.getByRole("button", {
+        name: `${product.name} cart limit reached`,
+      }),
+    ).toBeDisabled();
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
   });
 });
