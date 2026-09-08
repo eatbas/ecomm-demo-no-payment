@@ -5,6 +5,23 @@ import { resolve } from "node:path";
 const localDataDirectory = resolve(".data");
 await mkdir(localDataDirectory, { recursive: true });
 
+// The API process needs the JazzCash and admin-session secrets (see
+// server/config.ts); Vite's own .env loading stays disabled (vite.config.ts)
+// so this is the one place repository-root `.env` is read, and only to seed
+// this script's own process.env before spawning children — never bundled
+// into the browser build.
+try {
+  process.loadEnvFile(resolve(".env"));
+} catch (error) {
+  if (error?.code !== "ENOENT") {
+    throw error;
+  }
+  console.warn(
+    "No .env file found. Copy .env.example to .env and fill in the JazzCash " +
+      "and admin secrets before the API process will start.",
+  );
+}
+
 const childDefinitions = [
   {
     name: "API",

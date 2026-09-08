@@ -1,8 +1,15 @@
 import type { ProductId } from "./catalogue.js";
+import {
+  CUSTOMER_FIELD_RULES,
+  isValidCustomerDetails,
+  type CustomerDetails,
+} from "./customer.js";
 
-export const ORDER_CURRENCY = "EUR" as const;
-export const ORDER_STATUS = "completed" as const;
-export const ORDER_PAYMENT_STATUS = "not_configured" as const;
+// The catalogue is priced directly in Pakistani Rupees (PKR); every "*Cents" field
+// below is PKR paisa, the smallest PKR unit and the unit JazzCash's pp_Amount
+// expects, so no currency conversion is ever needed between the catalogue and the
+// JazzCash request.
+export const ORDER_CURRENCY = "PKR" as const;
 export const MAX_ORDER_LINES = 3;
 export const MAX_ORDER_QUANTITY = 99;
 export const MAX_ORDER_UNIT_PRICE_CENTS = 100_000_000;
@@ -22,6 +29,17 @@ export const ORDER_TIMESTAMP_PATTERN =
 export const ORDER_SNAPSHOT_PRODUCT_ID_PATTERN =
   /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
+// The order's own lifecycle *is* its payment lifecycle: there is no separate
+// fulfilment concept in this checkout, so one field carries both, matching this
+// repository's preference for avoiding redundant parallel state.
+export const PAYMENT_STATUSES = [
+  "awaiting_payment",
+  "paid",
+  "failed",
+  "ambiguous",
+] as const;
+export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
+
 export const ORDER_ERROR_CODES = [
   "IDEMPOTENCY_CONFLICT",
   "INTERNAL_ERROR",
@@ -31,20 +49,10 @@ export const ORDER_ERROR_CODES = [
   "PAYLOAD_TOO_LARGE",
 ] as const;
 
-export const DEMO_CUSTOMER = Object.freeze({
-  id: "demo-customer",
-  fullName: "Alex Example",
-  email: "alex@example.test",
-  phone: "+44 20 7946 0000",
-  addressLine1: "1 Demo Street",
-  city: "Exampleton",
-  postcode: "DE1 0MO",
-  country: "United Kingdom",
-});
-
-export type DemoCustomerId = typeof DEMO_CUSTOMER.id;
 export type OrderSnapshotProductId = string;
 export type OrderErrorCode = (typeof ORDER_ERROR_CODES)[number];
+export type { CustomerDetails } from "./customer.js";
+export { CUSTOMER_FIELD_RULES, isValidCustomerDetails };
 
 export interface CreateOrderLine {
   readonly productId: ProductId;
@@ -53,11 +61,11 @@ export interface CreateOrderLine {
 
 export interface CreateOrderRequest {
   readonly idempotencyKey: string;
-  readonly demoCustomerId: DemoCustomerId;
+  readonly customer: CustomerDetails;
   readonly lines: readonly CreateOrderLine[];
 }
 
-export interface CompletedOrderItem {
+export interface OrderItem {
   readonly productId: OrderSnapshotProductId;
   readonly productName: string;
   readonly unitPriceCents: number;
@@ -65,21 +73,20 @@ export interface CompletedOrderItem {
   readonly lineTotalCents: number;
 }
 
-export interface CompletedOrder {
+export interface Order {
   readonly id: string;
   readonly reference: string;
   readonly createdAt: string;
-  readonly status: typeof ORDER_STATUS;
-  readonly paymentStatus: typeof ORDER_PAYMENT_STATUS;
+  readonly paymentStatus: PaymentStatus;
   readonly currency: typeof ORDER_CURRENCY;
   readonly subtotalCents: number;
   readonly itemCount: number;
-  readonly demoCustomer: typeof DEMO_CUSTOMER;
-  readonly items: readonly CompletedOrderItem[];
+  readonly customer: CustomerDetails;
+  readonly items: readonly OrderItem[];
 }
 
 export interface AdminOrdersResponse {
-  readonly orders: readonly CompletedOrder[];
+  readonly orders: readonly Order[];
 }
 
 export interface OrderErrorResponse {

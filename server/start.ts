@@ -6,6 +6,10 @@ const app = await buildApp({
   databasePath: config.databasePath,
   staticRoot: config.staticRoot,
   logger: true,
+  adminPasswordHash: config.adminPasswordHash,
+  adminSessionSecret: config.adminSessionSecret,
+  jazzcash: config.jazzcash,
+  secureCookies: process.env.NODE_ENV === "production",
 });
 
 let shuttingDown = false;

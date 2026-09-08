@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "@/app/App";
 import { products } from "@/data/products";
 import { saveCart } from "@/features/cart/cart.storage";
-import { createCompletedOrder, createJsonResponse } from "@/test/orders";
+import { createOrderFixture, createJsonResponse } from "@/test/orders";
 
 function renderAppAt(pathname: string) {
   window.history.replaceState({}, "", pathname);
@@ -62,7 +62,7 @@ describe("route heading outlines", () => {
       screen.getByRole("heading", { level: 1, name: "Checkout" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { level: 2, name: "Demo delivery details" }),
+      screen.getByRole("heading", { level: 2, name: "Delivery and billing details" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { level: 2, name: "Payment" }),
@@ -77,14 +77,14 @@ describe("route heading outlines", () => {
       "fetch",
       vi.fn().mockResolvedValue(
         createJsonResponse({
-          orders: [createCompletedOrder({ reference: "CG-ABC12345" })],
+          orders: [createOrderFixture({ reference: "CG-ABC12345" })],
         }),
       ),
     );
     renderAppAt("/admin");
 
     expect(
-      screen.getByRole("heading", { level: 1, name: "Completed orders" }),
+      await screen.findByRole("heading", { level: 1, name: "Orders" }),
     ).toBeInTheDocument();
     expect(
       await screen.findByRole("heading", { level: 2, name: "CG-ABC12345" }),
@@ -92,7 +92,7 @@ describe("route heading outlines", () => {
     expect(
       screen.getByRole("heading", {
         level: 3,
-        name: "Synthetic demo account",
+        name: "Customer",
       }),
     ).toBeInTheDocument();
     expect(

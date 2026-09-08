@@ -7,35 +7,35 @@ import {
 } from "../../../shared/orders";
 import {
   parseAdminOrdersResponse,
-  parseCompletedOrder,
+  parseOrder,
   parseOrderErrorResponse,
+  parseOrderStatusResponse,
 } from "@/features/orders/order.validation";
 import {
-  createCompletedOrder,
-  createCompletedOrderItem,
+  createOrderFixture,
+  createOrderItemFixture,
 } from "@/test/orders";
 
-const validOrder = createCompletedOrder();
+const validOrder = createOrderFixture();
 
 describe("order response validation", () => {
   it("accepts a complete internally consistent order", () => {
-    expect(parseCompletedOrder(validOrder)).toEqual(validOrder);
+    expect(parseOrder(validOrder)).toEqual(validOrder);
     expect(parseAdminOrdersResponse({ orders: [validOrder] })).toEqual({
       orders: [validOrder],
     });
   });
 
   it("rejects inconsistent or unexpected server data", () => {
+    expect(parseOrder({ ...validOrder, subtotalCents: 1 })).toBeNull();
+    expect(parseOrder({ ...validOrder, paid: true })).toBeNull();
+    expect(parseOrder({ ...validOrder, paymentStatus: "unknown" })).toBeNull();
     expect(
-      parseCompletedOrder({ ...validOrder, subtotalCents: 1 }),
-    ).toBeNull();
-    expect(parseCompletedOrder({ ...validOrder, paid: true })).toBeNull();
-    expect(
-      parseCompletedOrder({
+      parseOrder({
         ...validOrder,
-        demoCustomer: {
-          ...validOrder.demoCustomer,
-          email: "someone@example.test",
+        customer: {
+          ...validOrder.customer,
+          email: "not-an-email",
         },
       }),
     ).toBeNull();
@@ -50,7 +50,7 @@ describe("order response validation", () => {
     expect(
       parseAdminOrdersResponse({
         orders: [
-          createCompletedOrder({
+          createOrderFixture({
             id: "ord_123e4567-e89b-42d3-a456-426614174001",
             reference: "CG-AB12CD35",
             createdAt: "2026-08-24T12:00:00.000Z",
@@ -68,50 +68,50 @@ describe("order response validation", () => {
     ["zero subtotal", { subtotalCents: 0 }],
     ["oversized subtotal", { subtotalCents: Number.MAX_SAFE_INTEGER }],
   ])("rejects %s", (_description, override) => {
-    expect(parseCompletedOrder({ ...validOrder, ...override })).toBeNull();
+    expect(parseOrder({ ...validOrder, ...override })).toBeNull();
   });
 
   it.each([
     [
       "duplicate snapshot identifiers",
-      [createCompletedOrderItem(), createCompletedOrderItem()],
+      [createOrderItemFixture(), createOrderItemFixture()],
     ],
     [
       "empty snapshot identifier",
-      [createCompletedOrderItem({ productId: "" })],
+      [createOrderItemFixture({ productId: "" })],
     ],
     [
       "oversized product name",
       [
-        createCompletedOrderItem({
+        createOrderItemFixture({
           productName: "x".repeat(MAX_ORDER_PRODUCT_NAME_LENGTH + 1),
         }),
       ],
     ],
-    ["zero unit price", [createCompletedOrderItem({ unitPriceCents: 0 })]],
+    ["zero unit price", [createOrderItemFixture({ unitPriceCents: 0 })]],
     [
       "oversized unit price",
       [
-        createCompletedOrderItem({
+        createOrderItemFixture({
           unitPriceCents: MAX_ORDER_UNIT_PRICE_CENTS + 1,
         }),
       ],
     ],
   ])("rejects %s", (_description, items) => {
-    expect(parseCompletedOrder(createCompletedOrder({ items }))).toBeNull();
+    expect(parseOrder(createOrderFixture({ items }))).toBeNull();
   });
 
   it("accepts a bounded historical snapshot identifier", () => {
-    const historicalOrder = createCompletedOrder({
+    const historicalOrder = createOrderFixture({
       items: [
-        createCompletedOrderItem({
+        createOrderItemFixture({
           productId: "retired-product",
           productName: "Retired product",
         }),
       ],
     });
 
-    expect(parseCompletedOrder(historicalOrder)).toEqual(historicalOrder);
+    expect(parseOrder(historicalOrder)).toEqual(historicalOrder);
   });
 
   it("strictly parses bounded order errors", () => {
@@ -137,5 +137,19 @@ describe("order response validation", () => {
         extra: true,
       }),
     ).toBeNull();
+  });
+
+  it("strictly parses an order status response", () => {
+    const status = {
+      id: validOrder.id,
+      reference: validOrder.reference,
+      paymentStatus: "awaiting_payment",
+    };
+    expect(parseOrderStatusResponse(status)).toEqual(status);
+    expect(
+      parseOrderStatusResponse({ ...status, paymentStatus: "unknown" }),
+    ).toBeNull();
+    expect(parseOrderStatusResponse({ ...status, extra: true })).toBeNull();
+    expect(parseOrderStatusResponse(null)).toBeNull();
   });
 });

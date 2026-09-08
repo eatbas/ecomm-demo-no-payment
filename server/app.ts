@@ -5,10 +5,19 @@ import Fastify, {
   type FastifyServerOptions,
 } from "fastify";
 import { extname } from "node:path";
+import type { JazzCashConfig } from "./config.js";
+import { requireAdminSession, registerAdminAuthRoutes } from "./routes/admin-auth.js";
+import { registerAdminOrderRoutes } from "./routes/admin-orders.js";
+import { registerAdminPaymentRoutes } from "./routes/admin-payments.js";
+import {
+  JAZZCASH_RETURN_PATH,
+  registerJazzCashReturnRoute,
+  registerPaymentRoutes,
+} from "./routes/payments.js";
 import { openOrderDatabase } from "./db/database.js";
 import { IdempotencyConflictError, OrderRepository } from "./orders/order.repository.js";
 import { OrderService, OrderValidationError } from "./orders/order.service.js";
-import { registerAdminOrderRoutes } from "./routes/admin-orders.js";
+import { PaymentRepository } from "./payments/payment.repository.js";
 import { registerOrderRoutes } from "./routes/orders.js";
 
 const API_BODY_LIMIT_BYTES = 16 * 1024;
@@ -18,7 +27,7 @@ const CONTENT_SECURITY_POLICY = [
   "base-uri 'none'",
   "connect-src 'self'",
   "font-src 'self'",
-  "form-action 'none'",
+  "form-action 'self'",
   "frame-ancestors 'none'",
   "img-src 'self'",
   "manifest-src 'self'",
@@ -31,12 +40,22 @@ export interface BuildAppOptions {
   readonly databasePath: string;
   readonly staticRoot?: string;
   readonly logger?: FastifyServerOptions["logger"];
+  readonly adminPasswordHash: string;
+  readonly adminSessionSecret: string;
+  readonly jazzcash: JazzCashConfig;
+  /** Send the cookie `Secure` attribute. False only for plain-HTTP development. */
+  readonly secureCookies?: boolean;
 }
 
 function setSecurityHeaders(reply: {
   header(name: string, value: string): unknown;
+  hasHeader(name: string): boolean;
 }): void {
-  reply.header("Content-Security-Policy", CONTENT_SECURITY_POLICY);
+  // A route (the JazzCash redirect page) may already have set its own,
+  // more permissive but still narrowly-scoped, CSP for its one response.
+  if (!reply.hasHeader("Content-Security-Policy")) {
+    reply.header("Content-Security-Policy", CONTENT_SECURITY_POLICY);
+  }
   reply.header(
     "Permissions-Policy",
     "camera=(), geolocation=(), microphone=(), payment=(), usb=()",
@@ -62,7 +81,8 @@ function isDynamicPath(pathname: string): boolean {
   return (
     pathname === "/healthz" ||
     pathname === "/api" ||
-    pathname.startsWith("/api/")
+    pathname.startsWith("/api/") ||
+    pathname === JAZZCASH_RETURN_PATH
   );
 }
 
@@ -83,8 +103,15 @@ function canUseSpaFallback(method: string, pathname: string): boolean {
 /** Build an API/static application whose database lifetime follows Fastify. */
 export async function buildApp(options: BuildAppOptions): Promise<FastifyInstance> {
   const database = openOrderDatabase(options.databasePath);
-  const repository = new OrderRepository(database);
-  const service = new OrderService(repository);
+  const orderRepository = new OrderRepository(database);
+  const paymentRepository = new PaymentRepository(orderRepository);
+  const orderService = new OrderService(orderRepository);
+  const secureCookies = options.secureCookies ?? true;
+  const adminAuthConfig = {
+    adminPasswordHash: options.adminPasswordHash,
+    adminSessionSecret: options.adminSessionSecret,
+    secureCookies,
+  };
   const app = Fastify({
     ajv: { customOptions: { removeAdditional: false } },
     bodyLimit: API_BODY_LIMIT_BYTES,
@@ -92,56 +119,9 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   });
 
   try {
-    app.addHook("onSend", (request, reply, payload, done) => {
-      setSecurityHeaders(reply);
-      if (isDynamicPath(getRequestPathname(request.url))) {
-        reply.header("Cache-Control", "no-store");
-      } else if (!reply.hasHeader("Cache-Control")) {
-        reply.header("Cache-Control", "no-cache");
-      }
-      done(null, payload);
-    });
-
-    app.addHook("onClose", () => {
-      repository.close();
-    });
-
-    app.get("/healthz", (_request, reply) => {
-      if (!repository.isReady) {
-        return reply.code(503).type("text/plain").send("not ready\n");
-      }
-      return reply.type("text/plain").send("ok\n");
-    });
-
-    registerOrderRoutes(app, service);
-    registerAdminOrderRoutes(app, service);
-
-    if (options.staticRoot !== undefined) {
-      await app.register(staticPlugin, {
-        root: options.staticRoot,
-        cacheControl: false,
-        setHeaders: setStaticCacheHeaders,
-      });
-    }
-
-    app.setNotFoundHandler((request, reply) => {
-      const pathname = getRequestPathname(request.url);
-      if (options.staticRoot !== undefined && canUseSpaFallback(request.method, pathname)) {
-        return reply.sendFile("index.html", {
-          maxAge: 0,
-          immutable: false,
-        });
-      }
-
-      if (isDynamicPath(pathname)) {
-        reply.header("Cache-Control", "no-store");
-      }
-      return reply.code(404).send({
-        code: "NOT_FOUND",
-        message: "The requested resource was not found.",
-      });
-    });
-
+    // Error/not-found handling is registered before any route — including
+    // routes inside nested plugin contexts below — so nothing can end up
+    // dispatched through Fastify's own default handlers instead of ours.
     app.setErrorHandler((error: FastifyError, request, reply) => {
       if (
         error.validation !== undefined ||
@@ -181,6 +161,72 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
         message: "The order service encountered an unexpected error.",
       });
     });
+
+    app.setNotFoundHandler((request, reply) => {
+      const pathname = getRequestPathname(request.url);
+      if (options.staticRoot !== undefined && canUseSpaFallback(request.method, pathname)) {
+        return reply.sendFile("index.html", {
+          maxAge: 0,
+          immutable: false,
+        });
+      }
+
+      if (isDynamicPath(pathname)) {
+        reply.header("Cache-Control", "no-store");
+      }
+      return reply.code(404).send({
+        code: "NOT_FOUND",
+        message: "The requested resource was not found.",
+      });
+    });
+
+    app.addHook("onSend", (request, reply, payload, done) => {
+      setSecurityHeaders(reply);
+      if (isDynamicPath(getRequestPathname(request.url))) {
+        if (!reply.hasHeader("Cache-Control")) {
+          reply.header("Cache-Control", "no-store");
+        }
+      } else if (!reply.hasHeader("Cache-Control")) {
+        reply.header("Cache-Control", "no-cache");
+      }
+      done(null, payload);
+    });
+
+    app.addHook("onClose", () => {
+      orderRepository.close();
+    });
+
+    app.get("/healthz", (_request, reply) => {
+      if (!orderRepository.isReady) {
+        return reply.code(503).type("text/plain").send("not ready\n");
+      }
+      return reply.type("text/plain").send("ok\n");
+    });
+
+    registerOrderRoutes(app, orderService);
+    registerPaymentRoutes(app, {
+      orderService,
+      paymentRepository,
+      jazzcash: options.jazzcash,
+    });
+    registerJazzCashReturnRoute(app, { paymentRepository });
+    registerAdminAuthRoutes(app, adminAuthConfig);
+
+    const adminPreHandler = requireAdminSession(adminAuthConfig);
+    registerAdminOrderRoutes(app, orderService, adminPreHandler);
+    registerAdminPaymentRoutes(
+      app,
+      { paymentRepository, jazzcash: options.jazzcash },
+      adminPreHandler,
+    );
+
+    if (options.staticRoot !== undefined) {
+      await app.register(staticPlugin, {
+        root: options.staticRoot,
+        cacheControl: false,
+        setHeaders: setStaticCacheHeaders,
+      });
+    }
 
     await app.ready();
     return app;

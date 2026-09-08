@@ -28,7 +28,7 @@ describe("CartLineItem", () => {
     ).toHaveTextContent("2");
     expect(
       screen.getByLabelText(`Line total for ${product.name}`),
-    ).toHaveTextContent("€158.00");
+    ).toHaveTextContent("Rs 158.00");
 
     await user.click(
       screen.getByRole("button", {

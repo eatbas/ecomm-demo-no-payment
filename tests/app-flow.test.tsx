@@ -1,31 +1,42 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { DEMO_CUSTOMER } from "../shared/orders";
 import { App } from "@/app/App";
+import { navigateTo } from "@/lib/navigation";
 import {
-  createCompletedOrder,
-  createCompletedOrderItem,
   createJsonResponse,
+  createOrderFixture,
+  TEST_CUSTOMER,
 } from "@/test/orders";
 
-const completedOrder = createCompletedOrder({
+vi.mock("@/lib/navigation", () => ({ navigateTo: vi.fn() }));
+
+const completedOrder = createOrderFixture({
   reference: "CG-FEED1234",
   createdAt: "2026-08-25T10:00:00.000Z",
+  paymentStatus: "awaiting_payment",
   items: [
-    createCompletedOrderItem({ quantity: 2 }),
-    createCompletedOrderItem({
+    {
+      productId: "everyday-backpack",
+      productName: "Everyday backpack",
+      unitPriceCents: 7_900,
+      quantity: 2,
+      lineTotalCents: 15_800,
+    },
+    {
       productId: "travel-mug",
       productName: "Insulated travel mug",
       unitPriceCents: 2_895,
       quantity: 1,
-    }),
+      lineTotalCents: 2_895,
+    },
   ],
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.mocked(navigateTo).mockClear();
 });
 
 function parseRequestBody(requestInit: RequestInit | undefined): unknown {
@@ -37,7 +48,7 @@ function parseRequestBody(requestInit: RequestInit | undefined): unknown {
 }
 
 describe("customer shopping flow", () => {
-  it("saves a fixed demo order before clearing the cart", async () => {
+  it("creates the order and hands off to JazzCash before clearing the cart", async () => {
     const fetchSpy = vi
       .fn<typeof fetch>()
       .mockResolvedValue(createJsonResponse(completedOrder, 201));
@@ -53,7 +64,9 @@ describe("customer shopping flow", () => {
       screen.getByRole("button", { name: "Add Insulated travel mug to cart" }),
     );
     await user.click(screen.getByRole("link", { name: "Cart, 2 items" }));
-    expect(screen.getByRole("main")).toHaveFocus();
+    await waitFor(() => {
+      expect(screen.getByRole("main")).toHaveFocus();
+    });
 
     await user.click(
       screen.getByRole("button", {
@@ -61,28 +74,36 @@ describe("customer shopping flow", () => {
       }),
     );
     await user.click(screen.getByRole("link", { name: "Review checkout" }));
-    expect(screen.getByRole("main")).toHaveFocus();
+    await waitFor(() => {
+      expect(screen.getByRole("main")).toHaveFocus();
+    });
     expect(
       screen.queryByText("This is a public demo."),
     ).not.toBeInTheDocument();
-    expect(screen.getByText("€186.95")).toBeInTheDocument();
+    expect(screen.getByText("Rs 186.95")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Fill with demo account" }));
-    expect(screen.getByLabelText("Email address")).toHaveValue(DEMO_CUSTOMER.email);
-    await user.click(screen.getByRole("button", { name: "Complete order" }));
+    await user.type(screen.getByLabelText("Full name"), TEST_CUSTOMER.fullName);
+    await user.type(screen.getByLabelText("Email address"), TEST_CUSTOMER.email);
+    await user.type(screen.getByLabelText("Phone number"), TEST_CUSTOMER.phone);
+    await user.type(screen.getByLabelText("Address"), TEST_CUSTOMER.addressLine1);
+    await user.type(screen.getByLabelText("Town or city"), TEST_CUSTOMER.city);
+    await user.type(screen.getByLabelText("Postcode"), TEST_CUSTOMER.postcode);
+    await user.type(screen.getByLabelText("Country"), TEST_CUSTOMER.country);
+    await user.click(screen.getByRole("button", { name: "Continue to JazzCash" }));
 
     expect(
-      await screen.findByRole("heading", { name: "Demo order completed" }),
+      await screen.findByRole("link", { name: "Cart, 0 items" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("CG-FEED1234")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Cart, 0 items" })).toBeInTheDocument();
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(parseRequestBody(fetchSpy.mock.calls[0]?.[1])).toMatchObject({
-      demoCustomerId: DEMO_CUSTOMER.id,
+      customer: TEST_CUSTOMER,
       lines: [
         { productId: "everyday-backpack", quantity: 2 },
         { productId: "travel-mug", quantity: 1 },
       ],
     });
+    expect(navigateTo).toHaveBeenCalledWith(
+      `/api/orders/${completedOrder.id}/payment/redirect`,
+    );
   });
 });

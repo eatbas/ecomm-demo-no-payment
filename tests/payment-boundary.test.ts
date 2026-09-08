@@ -199,6 +199,8 @@ describe("payment boundary scanner", () => {
     });
   });
 
+  const ORDER_STATUS_FETCH = "fetch(`/api/orders/${orderId}/status`);";
+
   it("allows one dedicated same-origin order API client", async () => {
     const rootDirectory = await createFixture({
       path: "src/features/orders/order.api.ts",
@@ -208,10 +210,39 @@ describe("payment boundary scanner", () => {
         export function listOrders() {
           return fetch(\`/api/admin/orders?limit=\${DEFAULT_ADMIN_ORDER_LIMIT}\`);
         }
+        export function getOrderStatus(orderId) {
+          return ${ORDER_STATUS_FETCH}
+        }
       `,
     });
 
     await expect(runScanner(rootDirectory)).resolves.toMatchObject({ stderr: "" });
+  });
+
+  it("allows one dedicated same-origin admin auth API client", async () => {
+    const rootDirectory = await createFixture({
+      path: "src/features/admin/admin.api.ts",
+      value: `
+        export function checkAdminSession() { return fetch("/api/admin/session"); }
+        export function adminLogin() { return fetch("/api/admin/login"); }
+        export function adminLogout() { return fetch("/api/admin/logout"); }
+      `,
+    });
+
+    await expect(runScanner(rootDirectory)).resolves.toMatchObject({ stderr: "" });
+  });
+
+  it("rejects an admin auth client missing one of its approved endpoints", async () => {
+    const rootDirectory = await createFixture({
+      path: "src/features/admin/admin.api.ts",
+      value: `
+        export function checkAdminSession() { return fetch("/api/admin/session"); }
+        export function adminLogin() { return fetch("/api/admin/login"); }
+      `,
+    });
+
+    const stderr = await runScannerExpectingFailure(rootDirectory);
+    expect(stderr).toContain("missing required fetch to admin logout");
   });
 
   it.each([
@@ -221,6 +252,7 @@ describe("payment boundary scanner", () => {
         const path = "/api/orders";
         fetch(path);
         fetch("/api/admin/orders?limit=50");
+        ${ORDER_STATUS_FETCH}
       `,
     ],
     [
@@ -228,6 +260,7 @@ describe("payment boundary scanner", () => {
       `
         fetch("/api/orders");
         fetch("/api/admin/export");
+        ${ORDER_STATUS_FETCH}
       `,
     ],
     [
@@ -235,6 +268,7 @@ describe("payment boundary scanner", () => {
       `
         fetch("/api/orders");
         fetch("//example.invalid/orders");
+        ${ORDER_STATUS_FETCH}
       `,
     ],
     [
@@ -242,6 +276,7 @@ describe("payment boundary scanner", () => {
       `
         fetch("/api/orders");
         fetch("https://example.invalid/orders");
+        ${ORDER_STATUS_FETCH}
       `,
     ],
     [
@@ -249,6 +284,7 @@ describe("payment boundary scanner", () => {
       `
         fetch("/api/orders");
         fetch("/api/admin/orders?limit=50");
+        ${ORDER_STATUS_FETCH}
         new WebSocket("/orders");
       `,
     ],
@@ -278,6 +314,43 @@ describe("payment boundary scanner", () => {
     const rootDirectory = await createFixture({
       path: "server/provider.ts",
       value: "const provider = paypal;",
+    });
+
+    const stderr = await runScannerExpectingFailure(rootDirectory);
+    expect(stderr).toContain("payment provider identifier or domain");
+  });
+
+  it("rejects a hardcoded JazzCash URL in server source (no allowlist exists for it)", async () => {
+    // The JazzCash integration (server/payments/jazzcash/*, server/config.ts)
+    // is deliberately built so the host is only ever a runtime env value
+    // (JAZZCASH_BASE_URL), never a literal in source — this proves that
+    // invariant is still enforced, not silently loosened by this change.
+    const rootDirectory = await createFixture({
+      path: "server/payments/jazzcash/hardcoded.ts",
+      value:
+        'export const JAZZCASH_URL = "https://onlinepayments.jazzcash.com.pk/payment-orchestrator/CustomerPortal/transactionmanagement/merchantform";',
+    });
+
+    const stderr = await runScannerExpectingFailure(rootDirectory);
+    expect(stderr).toContain("remote URL");
+  });
+
+  it("allows a literal JazzCash URL only inside a server *.test.ts fixture", async () => {
+    const rootDirectory = await createFixture({
+      path: "server/payments/jazzcash/hardcoded.test.ts",
+      value:
+        'export const JAZZCASH_URL = "https://onlinepayments.jazzcash.com.pk/some/path";',
+    });
+
+    await expect(runScanner(rootDirectory)).resolves.toMatchObject({ stderr: "" });
+  });
+
+  it("still rejects a payment-provider identifier inside a server *.test.ts fixture", async () => {
+    // The remote-URL relaxation for test fixtures must not widen into a
+    // general exemption: every other policy stays fully enforced there.
+    const rootDirectory = await createFixture({
+      path: "server/payments/jazzcash/hardcoded.test.ts",
+      value: "const provider = stripe;",
     });
 
     const stderr = await runScannerExpectingFailure(rootDirectory);

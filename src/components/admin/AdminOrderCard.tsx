@@ -1,11 +1,11 @@
-import type { CompletedOrder } from "../../../shared/orders";
+import type { Order } from "../../../shared/orders";
 
-import { AdminDemoAccount } from "@/components/admin/AdminDemoAccount";
+import { AdminCustomer } from "@/components/admin/AdminCustomer";
 import { AdminOrderStatus } from "@/components/admin/AdminOrderStatus";
 import { createAdminOrderView } from "@/components/admin/admin-order-view";
 
 interface AdminOrderCardProps {
-  readonly order: CompletedOrder;
+  readonly order: Order;
 }
 
 export function AdminOrderCard({ order }: AdminOrderCardProps) {
@@ -25,18 +25,18 @@ export function AdminOrderCard({ order }: AdminOrderCardProps) {
           {view.reference}
         </h2>
         <time className="mt-2 block text-sm" dateTime={view.createdAt}>
-          Completed {view.completedAt}
+          Placed {view.createdAtLabel}
         </time>
       </div>
 
       <div className="min-w-0 space-y-6 p-4">
-        <AdminOrderStatus />
+        <AdminOrderStatus paymentStatus={view.paymentStatus} />
 
-        <section aria-labelledby={`${headingId}-account`}>
-          <h3 id={`${headingId}-account`} className="text-sm font-bold text-primary">
-            Synthetic demo account
+        <section aria-labelledby={`${headingId}-customer`}>
+          <h3 id={`${headingId}-customer`} className="text-sm font-bold text-primary">
+            Customer
           </h3>
-          <AdminDemoAccount className="mt-2 text-sm" customer={view.customer} />
+          <AdminCustomer className="mt-2 text-sm" customer={view.customer} />
         </section>
 
         <section aria-labelledby={`${headingId}-items`}>

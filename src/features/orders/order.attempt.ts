@@ -1,14 +1,13 @@
 import { isProductId } from "../../../shared/catalogue";
 import {
+  isValidCustomerDetails,
   MAX_ORDER_LINES,
   MAX_ORDER_QUANTITY,
-  type CompletedOrder,
   type CreateOrderLine,
+  type CustomerDetails,
 } from "../../../shared/orders";
-import { parseCompletedOrder } from "@/features/orders/order.validation";
 
-const ORDER_ATTEMPT_STORAGE_KEY = "ecomm-demo:order-attempt:v1";
-const ORDER_COMPLETION_STORAGE_KEY = "ecomm-demo:order-completion:v1";
+const ORDER_ATTEMPT_STORAGE_KEY = "ecomm-demo:order-attempt:v2";
 const VERSION_FOUR_UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -20,6 +19,7 @@ interface SessionStorage {
 
 export interface OrderAttempt {
   readonly idempotencyKey: string;
+  readonly customer: CustomerDetails;
   readonly lines: readonly CreateOrderLine[];
 }
 
@@ -56,11 +56,13 @@ function parseOrderAttempt(value: unknown): OrderAttempt | null {
     typeof value !== "object" ||
     value === null ||
     Array.isArray(value) ||
-    Object.keys(value).length !== 2 ||
+    Object.keys(value).length !== 3 ||
     !("idempotencyKey" in value) ||
+    !("customer" in value) ||
     !("lines" in value) ||
     typeof value.idempotencyKey !== "string" ||
     !VERSION_FOUR_UUID_PATTERN.test(value.idempotencyKey) ||
+    !isValidCustomerDetails(value.customer) ||
     !Array.isArray(value.lines) ||
     value.lines.length < 1 ||
     value.lines.length > MAX_ORDER_LINES
@@ -78,7 +80,11 @@ function parseOrderAttempt(value: unknown): OrderAttempt | null {
     return null;
   }
 
-  return { idempotencyKey: value.idempotencyKey, lines: parsedLines };
+  return {
+    idempotencyKey: value.idempotencyKey,
+    customer: value.customer,
+    lines: parsedLines,
+  };
 }
 
 export function loadOrderAttempt(
@@ -127,40 +133,4 @@ export function clearOrderAttempt(
   }
 
   return false;
-}
-
-export function loadOrderCompletion(
-  storage = getSessionStorage(),
-): CompletedOrder | null {
-  if (storage === undefined) {
-    return null;
-  }
-
-  try {
-    const serialisedOrder = storage.getItem(ORDER_COMPLETION_STORAGE_KEY);
-    return serialisedOrder === null
-      ? null
-      : parseCompletedOrder(JSON.parse(serialisedOrder) as unknown);
-  } catch {
-    return null;
-  }
-}
-
-export function saveOrderCompletion(
-  order: CompletedOrder,
-  storage = getSessionStorage(),
-): void {
-  try {
-    storage?.setItem(ORDER_COMPLETION_STORAGE_KEY, JSON.stringify(order));
-  } catch {
-    // The persisted order remains available through the public admin page.
-  }
-}
-
-export function clearOrderCompletion(storage = getSessionStorage()): void {
-  try {
-    storage?.removeItem(ORDER_COMPLETION_STORAGE_KEY);
-  } catch {
-    // A stale confirmation is harmless if browser storage is unavailable.
-  }
 }

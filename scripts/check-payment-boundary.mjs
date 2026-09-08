@@ -23,15 +23,47 @@ const allowedSvgNamespaces = [
   "http://www.w3.org/2000/svg",
   "http://www.w3.org/1999/xlink",
 ];
-const allowedBrowserNetworkFile = "src/features/orders/order.api.ts";
-const allowedOrderFetchTargets = new Set([
-  '"/api/orders"',
-  "'/api/orders'",
-  "`/api/orders`",
-  '"/api/admin/orders?limit=50"',
-  "'/api/admin/orders?limit=50'",
-  "`/api/admin/orders?limit=50`",
-  "`/api/admin/orders?limit=${DEFAULT_ADMIN_ORDER_LIMIT}`",
+// Every browser-served file allowed to call the network at all, each locked to
+// its own exact, enumerated set of same-origin endpoints — one fetch call per
+// endpoint, any of that endpoint's accepted literal spellings. A file not
+// listed here may not call fetch/XHR/WebSocket/EventSource/sendBeacon at all
+// (see browserPolicies' "browser network primitive" entry below).
+const allowedOrderFetchEndpoints = [
+  {
+    name: "create order",
+    literals: new Set(['"/api/orders"', "'/api/orders'", "`/api/orders`"]),
+  },
+  {
+    name: "admin order list",
+    literals: new Set([
+      '"/api/admin/orders?limit=50"',
+      "'/api/admin/orders?limit=50'",
+      "`/api/admin/orders?limit=50`",
+      "`/api/admin/orders?limit=${DEFAULT_ADMIN_ORDER_LIMIT}`",
+    ]),
+  },
+  {
+    name: "order payment status",
+    literals: new Set(["`/api/orders/${orderId}/status`"]),
+  },
+];
+const allowedAdminAuthFetchEndpoints = [
+  {
+    name: "admin session check",
+    literals: new Set(['"/api/admin/session"', "'/api/admin/session'", "`/api/admin/session`"]),
+  },
+  {
+    name: "admin login",
+    literals: new Set(['"/api/admin/login"', "'/api/admin/login'", "`/api/admin/login`"]),
+  },
+  {
+    name: "admin logout",
+    literals: new Set(['"/api/admin/logout"', "'/api/admin/logout'", "`/api/admin/logout`"]),
+  },
+];
+const allowedNetworkFiles = new Map([
+  ["src/features/orders/order.api.ts", allowedOrderFetchEndpoints],
+  ["src/features/admin/admin.api.ts", allowedAdminAuthFetchEndpoints],
 ]);
 const browserFetchPattern = /\bfetch\s*\(/;
 
@@ -177,37 +209,38 @@ function removeAllowedSvgNamespaces(path, contents) {
   );
 }
 
-function inspectAllowedOrderApiClient(path, contents, violations) {
+function inspectAllowedNetworkFile(path, contents, endpoints, violations) {
   const fetchCount = contents.match(/\bfetch\s*\(/g)?.length ?? 0;
   const fetchTargets = [
     ...contents.matchAll(/\bfetch\s*\(\s*([^,\r\n)]+)(?=\s*(?:,|\)))/g),
   ].map((match) => match[1]?.trim());
 
-  if (fetchCount !== 2) {
-    violations.push(
-      `${path}: order API client must contain exactly two endpoint-specific fetch primitives`,
-    );
-  }
-
   if (fetchTargets.length !== fetchCount) {
     violations.push(`${path}: every fetch target must be a direct string literal`);
   }
 
+  const allLiterals = new Set(endpoints.flatMap((endpoint) => [...endpoint.literals]));
   for (const fetchTarget of fetchTargets) {
-    if (fetchTarget === undefined || !allowedOrderFetchTargets.has(fetchTarget)) {
+    if (fetchTarget === undefined || !allLiterals.has(fetchTarget)) {
       violations.push(`${path}: unexpected fetch target ${fetchTarget ?? "unknown"}`);
     }
   }
 
-  const uniqueTargets = new Set(fetchTargets);
-  const hasCreateTarget = [...uniqueTargets].some((target) =>
-    target?.includes("/api/orders"),
-  );
-  const hasAdminTarget = [...uniqueTargets].some((target) =>
-    target?.includes("/api/admin/orders?limit="),
-  );
-  if (!hasCreateTarget || !hasAdminTarget) {
-    violations.push(`${path}: both approved order API targets are required`);
+  // Exactly one call site per approved endpoint, using any of its accepted
+  // literal spellings: this file may not grow an unenumerated extra call,
+  // and every approved endpoint must actually be used.
+  if (fetchCount !== endpoints.length) {
+    violations.push(
+      `${path}: must contain exactly one fetch call per approved endpoint (${endpoints.length} expected, found ${fetchCount})`,
+    );
+  }
+  for (const endpoint of endpoints) {
+    const isPresent = fetchTargets.some(
+      (target) => target !== undefined && endpoint.literals.has(target),
+    );
+    if (!isPresent) {
+      violations.push(`${path}: missing required fetch to ${endpoint.name}`);
+    }
   }
 }
 
@@ -246,9 +279,9 @@ export async function inspectPaymentBoundary(rootDirectory = process.cwd()) {
   for (const path of browserFiles) {
     const contents = removeAllowedSvgNamespaces(path, await readFile(path, "utf8"));
     const relativePath = relative(absoluteRoot, path);
+    const allowedTargets = allowedNetworkFiles.get(relativePath);
     const policies = browserPolicies.map((policy) =>
-      relativePath === allowedBrowserNetworkFile &&
-      policy.name === "browser network primitive"
+      allowedTargets !== undefined && policy.name === "browser network primitive"
         ? {
             ...policy,
             patterns: policy.patterns.filter(
@@ -259,8 +292,8 @@ export async function inspectPaymentBoundary(rootDirectory = process.cwd()) {
     );
     inspectValue(relativePath, contents, policies, violations);
 
-    if (relativePath === allowedBrowserNetworkFile) {
-      inspectAllowedOrderApiClient(relativePath, contents, violations);
+    if (allowedTargets !== undefined) {
+      inspectAllowedNetworkFile(relativePath, contents, allowedTargets, violations);
     }
   }
 
@@ -268,12 +301,20 @@ export async function inspectPaymentBoundary(rootDirectory = process.cwd()) {
     (policy) => policy.name !== "browser network primitive",
   );
   for (const path of [...sharedFiles, ...serverFiles]) {
-    inspectValue(
-      relative(absoluteRoot, path),
-      await readFile(path, "utf8"),
-      nonBrowserPolicies,
-      violations,
-    );
+    const relativePath = relative(absoluteRoot, path);
+    // Application code (config.ts, the jazzcash/* client modules, and every
+    // route) reads the JazzCash host only from JAZZCASH_BASE_URL at runtime —
+    // it is never a literal string in source. Only *.test.ts fixtures and the
+    // shared test-fixture helper are allowed a literal example/sandbox URL,
+    // and only that one policy is relaxed for them; every other check (payment
+    // provider identifiers, credential-shaped fields, analytics, …) still
+    // applies in full.
+    const policies =
+      relativePath.endsWith(".test.ts") ||
+      relativePath === "server/test/fixtures.ts"
+        ? nonBrowserPolicies.filter((policy) => policy.name !== "remote URL")
+        : nonBrowserPolicies;
+    inspectValue(relativePath, await readFile(path, "utf8"), policies, violations);
   }
 
   return {

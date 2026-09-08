@@ -2,12 +2,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   createOrder,
+  getOrderStatus,
   listCompletedOrders,
   OrderApiError,
 } from "@/features/orders/order.api";
-import { createCompletedOrder, createJsonResponse } from "@/test/orders";
+import { createOrderFixture, createJsonResponse, TEST_CUSTOMER } from "@/test/orders";
 
-const validOrder = createCompletedOrder();
+const validOrder = createOrderFixture();
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -19,7 +20,7 @@ describe("order API client", () => {
     vi.stubGlobal("fetch", fetchSpy);
     const request = {
       idempotencyKey: "123e4567-e89b-42d3-a456-426614174000",
-      demoCustomerId: "demo-customer" as const,
+      customer: TEST_CUSTOMER,
       lines: [{ productId: "everyday-backpack" as const, quantity: 1 }],
     };
 
@@ -42,6 +43,22 @@ describe("order API client", () => {
     await expect(listCompletedOrders()).resolves.toEqual({ orders: [validOrder] });
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/admin/orders?limit=50",
+      expect.any(Object),
+    );
+  });
+
+  it("gets an order's payment status by id", async () => {
+    const statusBody = {
+      id: validOrder.id,
+      reference: validOrder.reference,
+      paymentStatus: "paid",
+    };
+    const fetchSpy = vi.fn().mockResolvedValue(createJsonResponse(statusBody));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await expect(getOrderStatus(validOrder.id)).resolves.toEqual(statusBody);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      `/api/orders/${validOrder.id}/status`,
       expect.any(Object),
     );
   });

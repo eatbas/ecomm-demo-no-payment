@@ -10,6 +10,7 @@ export default defineConfig({
     proxy: {
       "/api": "http://127.0.0.1:3001",
       "/healthz": "http://127.0.0.1:3001",
+      "/checkout/return": "http://127.0.0.1:3001",
     },
   },
   resolve: {

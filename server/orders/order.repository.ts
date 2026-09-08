@@ -1,14 +1,13 @@
 import type { DatabaseSync, SQLOutputValue } from "node:sqlite";
 import {
-  DEMO_CUSTOMER,
   MAX_ORDER_SNAPSHOT_PRODUCT_ID_LENGTH,
   ORDER_CURRENCY,
-  ORDER_PAYMENT_STATUS,
   ORDER_SNAPSHOT_PRODUCT_ID_PATTERN,
-  ORDER_STATUS,
-  type CompletedOrder,
-  type CompletedOrderItem,
-  type OrderSnapshotProductId,
+  PAYMENT_STATUSES,
+  type CustomerDetails,
+  type Order,
+  type OrderItem,
+  type PaymentStatus,
 } from "../../shared/orders.js";
 
 export interface OrderToPersist {
@@ -19,11 +18,12 @@ export interface OrderToPersist {
   readonly createdAt: string;
   readonly subtotalCents: number;
   readonly itemCount: number;
-  readonly items: readonly CompletedOrderItem[];
+  readonly customer: CustomerDetails;
+  readonly items: readonly OrderItem[];
 }
 
 export interface PersistOrderResult {
-  readonly order: CompletedOrder;
+  readonly order: Order;
   readonly created: boolean;
 }
 
@@ -34,16 +34,16 @@ export class IdempotencyConflictError extends Error {
   }
 }
 
-class DataIntegrityError extends Error {
+export class DataIntegrityError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "DataIntegrityError";
   }
 }
 
-type DatabaseRow = Record<string, SQLOutputValue>;
+export type DatabaseRow = Record<string, SQLOutputValue>;
 
-function readString(row: DatabaseRow, column: string): string {
+export function readString(row: DatabaseRow, column: string): string {
   const value = row[column];
   if (typeof value !== "string") {
     throw new DataIntegrityError(`Expected ${column} to contain text.`);
@@ -51,7 +51,18 @@ function readString(row: DatabaseRow, column: string): string {
   return value;
 }
 
-function readInteger(row: DatabaseRow, column: string): number {
+function readNullableString(row: DatabaseRow, column: string): string | null {
+  const value = row[column];
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value !== "string") {
+    throw new DataIntegrityError(`Expected ${column} to contain text or null.`);
+  }
+  return value;
+}
+
+export function readInteger(row: DatabaseRow, column: string): number {
   const value = row[column];
   if (typeof value !== "number" || !Number.isSafeInteger(value)) {
     throw new DataIntegrityError(`Expected ${column} to contain an integer.`);
@@ -59,7 +70,15 @@ function readInteger(row: DatabaseRow, column: string): number {
   return value;
 }
 
-function readProductId(row: DatabaseRow): OrderSnapshotProductId {
+function readPaymentStatus(row: DatabaseRow, column: string): PaymentStatus {
+  const value = readString(row, column);
+  if (!(PAYMENT_STATUSES as readonly string[]).includes(value)) {
+    throw new DataIntegrityError(`The stored ${column} value is invalid.`);
+  }
+  return value as PaymentStatus;
+}
+
+function readProductId(row: DatabaseRow): string {
   const value = readString(row, "productId");
   if (
     value.length > MAX_ORDER_SNAPSHOT_PRODUCT_ID_LENGTH ||
@@ -70,7 +89,7 @@ function readProductId(row: DatabaseRow): OrderSnapshotProductId {
   return value;
 }
 
-function mapOrderItem(row: DatabaseRow): CompletedOrderItem {
+function mapOrderItem(row: DatabaseRow): OrderItem {
   return {
     productId: readProductId(row),
     productName: readString(row, "productName"),
@@ -80,14 +99,22 @@ function mapOrderItem(row: DatabaseRow): CompletedOrderItem {
   };
 }
 
-function assertLiteral(
-  row: DatabaseRow,
-  column: string,
-  expected: string,
-): void {
+function assertLiteral(row: DatabaseRow, column: string, expected: string): void {
   if (readString(row, column) !== expected) {
     throw new DataIntegrityError(`The stored ${column} value is invalid.`);
   }
+}
+
+function readCustomer(row: DatabaseRow): CustomerDetails {
+  return {
+    fullName: readString(row, "customerFullName"),
+    email: readString(row, "customerEmail"),
+    phone: readString(row, "customerPhone"),
+    addressLine1: readString(row, "customerAddressLine1"),
+    city: readString(row, "customerCity"),
+    postcode: readString(row, "customerPostcode"),
+    country: readString(row, "customerCountry"),
+  };
 }
 
 export class OrderRepository {
@@ -95,6 +122,11 @@ export class OrderRepository {
 
   constructor(database: DatabaseSync) {
     this.#database = database;
+  }
+
+  /** Exposed so the payments module can share one transactional connection. */
+  get database(): DatabaseSync {
+    return this.#database;
   }
 
   get isReady(): boolean {
@@ -138,18 +170,32 @@ export class OrderRepository {
     }
   }
 
-  listCompleted(limit: number): readonly CompletedOrder[] {
+  findById(orderId: string): Order | undefined {
+    const row = this.#database
+      .prepare("SELECT id FROM orders WHERE id = ?")
+      .get(orderId);
+    return row === undefined ? undefined : this.readOrder(orderId);
+  }
+
+  listPaid(limit: number): readonly Order[] {
     const orderRows = this.#database
       .prepare(
         `SELECT id
          FROM orders
-         WHERE status = ?
+         WHERE payment_status = 'paid'
          ORDER BY created_at DESC, id DESC
          LIMIT ?`,
       )
-      .all(ORDER_STATUS, limit) as unknown as DatabaseRow[];
+      .all(limit) as unknown as DatabaseRow[];
 
     return orderRows.map((row) => this.readOrder(readString(row, "id")));
+  }
+
+  /** Used only by the payments module, inside its own transaction. */
+  setPaymentStatus(orderId: string, paymentStatus: PaymentStatus): void {
+    this.#database
+      .prepare("UPDATE orders SET payment_status = ? WHERE id = ?")
+      .run(paymentStatus, orderId);
   }
 
   private insertOrder(order: OrderToPersist): void {
@@ -157,22 +203,28 @@ export class OrderRepository {
       .prepare(
         `INSERT INTO orders (
            id, reference, idempotency_key, request_fingerprint,
-           demo_customer_id, created_at, status, payment_status,
-           currency, subtotal_cents, item_count
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           created_at, payment_status, currency, subtotal_cents, item_count,
+           customer_full_name, customer_email, customer_phone,
+           customer_address_line1, customer_city, customer_postcode, customer_country
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         order.id,
         order.reference,
         order.idempotencyKey,
         order.requestFingerprint,
-        DEMO_CUSTOMER.id,
         order.createdAt,
-        ORDER_STATUS,
-        ORDER_PAYMENT_STATUS,
+        "awaiting_payment",
         ORDER_CURRENCY,
         order.subtotalCents,
         order.itemCount,
+        order.customer.fullName,
+        order.customer.email,
+        order.customer.phone,
+        order.customer.addressLine1,
+        order.customer.city,
+        order.customer.postcode,
+        order.customer.country,
       );
 
     const insertItem = this.#database.prepare(
@@ -194,19 +246,24 @@ export class OrderRepository {
     });
   }
 
-  private readOrder(orderId: string): CompletedOrder {
+  private readOrder(orderId: string): Order {
     const orderRow = this.#database
       .prepare(
         `SELECT
            id,
            reference,
            created_at AS createdAt,
-           demo_customer_id AS demoCustomerId,
-           status,
            payment_status AS paymentStatus,
            currency,
            subtotal_cents AS subtotalCents,
-           item_count AS itemCount
+           item_count AS itemCount,
+           customer_full_name AS customerFullName,
+           customer_email AS customerEmail,
+           customer_phone AS customerPhone,
+           customer_address_line1 AS customerAddressLine1,
+           customer_city AS customerCity,
+           customer_postcode AS customerPostcode,
+           customer_country AS customerCountry
          FROM orders
          WHERE id = ?`,
       )
@@ -215,9 +272,6 @@ export class OrderRepository {
       throw new DataIntegrityError("The persisted order could not be read back.");
     }
 
-    assertLiteral(orderRow, "demoCustomerId", DEMO_CUSTOMER.id);
-    assertLiteral(orderRow, "status", ORDER_STATUS);
-    assertLiteral(orderRow, "paymentStatus", ORDER_PAYMENT_STATUS);
     assertLiteral(orderRow, "currency", ORDER_CURRENCY);
 
     const itemRows = this.#database
@@ -238,12 +292,11 @@ export class OrderRepository {
       id: readString(orderRow, "id"),
       reference: readString(orderRow, "reference"),
       createdAt: readString(orderRow, "createdAt"),
-      status: ORDER_STATUS,
-      paymentStatus: ORDER_PAYMENT_STATUS,
+      paymentStatus: readPaymentStatus(orderRow, "paymentStatus"),
       currency: ORDER_CURRENCY,
       subtotalCents: readInteger(orderRow, "subtotalCents"),
       itemCount: readInteger(orderRow, "itemCount"),
-      demoCustomer: DEMO_CUSTOMER,
+      customer: readCustomer(orderRow),
       items: itemRows.map(mapOrderItem),
     };
   }
@@ -263,3 +316,5 @@ export class OrderRepository {
     throw cause;
   }
 }
+
+export { readNullableString };

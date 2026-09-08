@@ -1,7 +1,16 @@
 import { catalogueProducts } from "../../shared/catalogue.js";
 import {
+  CUSTOMER_EMAIL_PATTERN,
+  MAX_CUSTOMER_ADDRESS_LINE1_LENGTH,
+  MAX_CUSTOMER_CITY_LENGTH,
+  MAX_CUSTOMER_COUNTRY_LENGTH,
+  MAX_CUSTOMER_EMAIL_LENGTH,
+  MAX_CUSTOMER_FULL_NAME_LENGTH,
+  MAX_CUSTOMER_PHONE_LENGTH,
+  MAX_CUSTOMER_POSTCODE_LENGTH,
+} from "../../shared/customer.js";
+import {
   DEFAULT_ADMIN_ORDER_LIMIT,
-  DEMO_CUSTOMER,
   MAX_ADMIN_ORDER_LIMIT,
   MAX_ORDER_LINES,
   MAX_ORDER_QUANTITY,
@@ -9,10 +18,46 @@ import {
 
 const productIds = catalogueProducts.map((product) => product.id);
 
+const customerSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "fullName",
+    "email",
+    "phone",
+    "addressLine1",
+    "city",
+    "postcode",
+    "country",
+  ],
+  properties: {
+    fullName: { type: "string", minLength: 1, maxLength: MAX_CUSTOMER_FULL_NAME_LENGTH },
+    email: {
+      type: "string",
+      minLength: 1,
+      maxLength: MAX_CUSTOMER_EMAIL_LENGTH,
+      pattern: CUSTOMER_EMAIL_PATTERN.source,
+    },
+    phone: { type: "string", minLength: 1, maxLength: MAX_CUSTOMER_PHONE_LENGTH },
+    addressLine1: {
+      type: "string",
+      minLength: 1,
+      maxLength: MAX_CUSTOMER_ADDRESS_LINE1_LENGTH,
+    },
+    city: { type: "string", minLength: 1, maxLength: MAX_CUSTOMER_CITY_LENGTH },
+    postcode: {
+      type: "string",
+      minLength: 1,
+      maxLength: MAX_CUSTOMER_POSTCODE_LENGTH,
+    },
+    country: { type: "string", minLength: 1, maxLength: MAX_CUSTOMER_COUNTRY_LENGTH },
+  },
+} as const;
+
 export const createOrderBodySchema = {
   type: "object",
   additionalProperties: false,
-  required: ["idempotencyKey", "demoCustomerId", "lines"],
+  required: ["idempotencyKey", "customer", "lines"],
   properties: {
     idempotencyKey: {
       type: "string",
@@ -21,7 +66,7 @@ export const createOrderBodySchema = {
       pattern:
         "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
     },
-    demoCustomerId: { type: "string", const: DEMO_CUSTOMER.id },
+    customer: customerSchema,
     lines: {
       type: "array",
       minItems: 1,

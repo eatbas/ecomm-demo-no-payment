@@ -1,19 +1,36 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it } from "vitest";
 import { buildApp } from "../app.js";
+import {
+  TEST_ADMIN_PASSWORD_HASH,
+  TEST_ADMIN_SESSION_SECRET,
+  TEST_JAZZCASH_CONFIG,
+  createTestCustomer,
+} from "../test/fixtures.js";
+import { ADMIN_SESSION_COOKIE_NAME, createSessionToken } from "../auth/admin-session.js";
 
 const apps: Awaited<ReturnType<typeof buildApp>>[] = [];
 
 const validRequest = {
   idempotencyKey: "00000000-0000-4000-8000-000000000301",
-  demoCustomerId: "demo-customer",
+  customer: createTestCustomer(),
   lines: [{ productId: "desk-lamp", quantity: 2 }],
 };
 
 async function createTestApp(): Promise<Awaited<ReturnType<typeof buildApp>>> {
-  const app = await buildApp({ databasePath: ":memory:" });
+  const app = await buildApp({
+    databasePath: ":memory:",
+    adminPasswordHash: TEST_ADMIN_PASSWORD_HASH,
+    adminSessionSecret: TEST_ADMIN_SESSION_SECRET,
+    jazzcash: TEST_JAZZCASH_CONFIG,
+  });
   apps.push(app);
   return app;
+}
+
+function adminCookieHeader(): Record<string, string> {
+  const token = createSessionToken(TEST_ADMIN_SESSION_SECRET);
+  return { cookie: `${ADMIN_SESSION_COOKIE_NAME}=${encodeURIComponent(token)}` };
 }
 
 afterEach(async () => {
@@ -21,7 +38,7 @@ afterEach(async () => {
 });
 
 describe("order routes", () => {
-  it("creates once, replays the result, and exposes it publicly to admin", async () => {
+  it("creates once and replays the result idempotently", async () => {
     const app = await createTestApp();
     const firstResponse = await app.inject({
       method: "POST",
@@ -33,20 +50,16 @@ describe("order routes", () => {
       url: "/api/orders",
       payload: validRequest,
     });
-    const adminResponse = await app.inject({
-      method: "GET",
-      url: "/api/admin/orders?limit=1",
-    });
 
     expect(firstResponse.statusCode).toBe(201);
     expect(replayResponse.statusCode).toBe(201);
     expect(replayResponse.json()).toEqual(firstResponse.json());
     expect(firstResponse.json()).toMatchObject({
-      status: "completed",
-      paymentStatus: "not_configured",
-      currency: "EUR",
+      paymentStatus: "awaiting_payment",
+      currency: "PKR",
       subtotalCents: 10_900,
       itemCount: 2,
+      customer: validRequest.customer,
       items: [
         {
           productName: "Adjustable desk lamp",
@@ -57,9 +70,31 @@ describe("order routes", () => {
       ],
     });
     expect(firstResponse.headers["cache-control"]).toBe("no-store");
-    expect(adminResponse.statusCode).toBe(200);
-    expect(adminResponse.headers["cache-control"]).toBe("no-store");
-    expect(adminResponse.json()).toEqual({ orders: [firstResponse.json()] });
+  });
+
+  it("exposes a newly paid order via the admin endpoint once authenticated, and not before", async () => {
+    const app = await createTestApp();
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/orders",
+      payload: validRequest,
+    });
+
+    const unauthenticated = await app.inject({
+      method: "GET",
+      url: "/api/admin/orders?limit=1",
+    });
+    expect(unauthenticated.statusCode).toBe(401);
+
+    // Not paid yet: authenticated admin sees no orders either.
+    const authenticatedButUnpaid = await app.inject({
+      method: "GET",
+      url: "/api/admin/orders?limit=1",
+      headers: adminCookieHeader(),
+    });
+    expect(authenticatedButUnpaid.statusCode).toBe(200);
+    expect(authenticatedButUnpaid.json()).toEqual({ orders: [] });
+    void created;
   });
 
   it.each([
@@ -76,7 +111,10 @@ describe("order routes", () => {
         ],
       },
     ],
-    ["arbitrary customers", { ...validRequest, demoCustomerId: "real-customer" }],
+    [
+      "incomplete customer details",
+      { ...validRequest, customer: { ...validRequest.customer, email: "not-an-email" } },
+    ],
     ["non-canonical idempotency keys", { ...validRequest, idempotencyKey: "invalid-key-value" }],
   ])("rejects %s", async (_description, payload) => {
     const app = await createTestApp();
@@ -136,23 +174,20 @@ describe("order routes", () => {
     });
   });
 
-  it("bounds and validates the unauthenticated newest-order query", async () => {
+  it("bounds and validates the authenticated admin order query", async () => {
     const app = await createTestApp();
-    const noCredentials = await app.inject({
-      method: "GET",
-      url: "/api/admin/orders",
-    });
+    const headers = adminCookieHeader();
     const excessive = await app.inject({
       method: "GET",
       url: "/api/admin/orders?limit=101",
+      headers,
     });
     const unknownQuery = await app.inject({
       method: "GET",
       url: "/api/admin/orders?cursor=secret",
+      headers,
     });
 
-    expect(noCredentials.statusCode).toBe(200);
-    expect(noCredentials.json()).toEqual({ orders: [] });
     expect(excessive.statusCode).toBe(400);
     expect(unknownQuery.statusCode).toBe(400);
   });
@@ -169,6 +204,9 @@ describe("order routes", () => {
     expect(response.headers["permissions-policy"]).toContain("payment=()");
     expect(response.headers["content-security-policy"]).toContain(
       "connect-src 'self'",
+    );
+    expect(response.headers["content-security-policy"]).toContain(
+      "form-action 'self'",
     );
   });
 

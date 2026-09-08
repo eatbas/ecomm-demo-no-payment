@@ -1,13 +1,15 @@
 import {
   DEFAULT_ADMIN_ORDER_LIMIT,
   type AdminOrdersResponse,
-  type CompletedOrder,
   type CreateOrderRequest,
+  type Order,
 } from "../../../shared/orders";
 import {
   parseAdminOrdersResponse,
-  parseCompletedOrder,
+  parseOrder,
   parseOrderErrorResponse,
+  parseOrderStatusResponse,
+  type OrderStatusResponse,
 } from "@/features/orders/order.validation";
 
 export class OrderApiError extends Error {
@@ -25,22 +27,26 @@ async function readJsonResponse(response: Response): Promise<unknown> {
   }
 }
 
-type OrderApiOperation = "create" | "list";
+type OrderApiOperation = "create" | "list" | "status";
 
 async function requestJson(
   operation: OrderApiOperation,
-  init?: RequestInit,
+  init: RequestInit | undefined,
+  orderId?: string,
 ): Promise<unknown> {
   let response: Response;
 
   try {
-    response =
-      operation === "create"
-        ? await fetch("/api/orders", init)
-        : await fetch(
-            `/api/admin/orders?limit=${DEFAULT_ADMIN_ORDER_LIMIT}`,
-            init,
-          );
+    if (operation === "create") {
+      response = await fetch("/api/orders", init);
+    } else if (operation === "list") {
+      response = await fetch(
+        `/api/admin/orders?limit=${DEFAULT_ADMIN_ORDER_LIMIT}`,
+        init,
+      );
+    } else {
+      response = await fetch(`/api/orders/${orderId}/status`, init);
+    }
   } catch {
     throw new OrderApiError("The order service could not be reached. Try again.");
   }
@@ -59,14 +65,14 @@ async function requestJson(
 export async function createOrder(
   request: CreateOrderRequest,
   signal?: AbortSignal,
-): Promise<CompletedOrder> {
+): Promise<Order> {
   const body = await requestJson("create", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
     signal,
   });
-  const order = parseCompletedOrder(body);
+  const order = parseOrder(body);
 
   if (order === null) {
     throw new OrderApiError("The order service returned an invalid confirmation.");
@@ -86,4 +92,18 @@ export async function listCompletedOrders(
   }
 
   return response;
+}
+
+export async function getOrderStatus(
+  orderId: string,
+  signal?: AbortSignal,
+): Promise<OrderStatusResponse> {
+  const body = await requestJson("status", { signal }, orderId);
+  const status = parseOrderStatusResponse(body);
+
+  if (status === null) {
+    throw new OrderApiError("The order service returned an invalid status.");
+  }
+
+  return status;
 }

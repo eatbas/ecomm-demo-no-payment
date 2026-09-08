@@ -27,10 +27,7 @@ function RouteDocumentTitle() {
   const { pathname } = useLocation();
 
   useEffect(() => {
-    document.title =
-      pathname === "/admin"
-        ? "Completed orders | Common Goods"
-        : "Common Goods";
+    document.title = pathname === "/admin" ? "Admin | Common Goods" : "Common Goods";
   }, [pathname]);
 
   return null;

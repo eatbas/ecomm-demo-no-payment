@@ -1,29 +1,23 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Link, MemoryRouter, Route, Routes } from "react-router";
 
-import { DEMO_CUSTOMER, type CompletedOrder } from "../../shared/orders";
 import { CartProvider, useCart } from "@/features/cart/CartContext";
+import { navigateTo } from "@/lib/navigation";
 import { CheckoutPage } from "@/pages/CheckoutPage";
 import { seedStoredCart } from "@/test/cart";
-import {
-  createCompletedOrder,
-  createCompletedOrderItem,
-  createJsonResponse,
-} from "@/test/orders";
+import { createJsonResponse, createOrderFixture, TEST_CUSTOMER } from "@/test/orders";
 
-const completedOrder = createCompletedOrder({
+vi.mock("@/lib/navigation", () => ({ navigateTo: vi.fn() }));
+
+const completedOrder = createOrderFixture({
   reference: "CG-DEAD1234",
   createdAt: "2026-08-25T10:00:00.000Z",
+  paymentStatus: "awaiting_payment",
   items: [
-    createCompletedOrderItem({ quantity: 2 }),
-    createCompletedOrderItem({
-      productId: "travel-mug",
-      productName: "Insulated travel mug",
-      unitPriceCents: 2_895,
-      quantity: 1,
-    }),
+    { productId: "everyday-backpack", productName: "Everyday backpack", unitPriceCents: 7_900, quantity: 2, lineTotalCents: 15_800 },
+    { productId: "travel-mug", productName: "Insulated travel mug", unitPriceCents: 2_895, quantity: 1, lineTotalCents: 2_895 },
   ],
 });
 
@@ -34,16 +28,13 @@ function CartItemCount() {
 }
 
 function CartMutationRoute() {
-  const { addItem, incrementItem } = useCart();
+  const { addItem } = useCart();
 
   return (
     <div>
       <p>Your cart route</p>
       <button type="button" onClick={() => addItem("desk-lamp")}>
         Add later cart item
-      </button>
-      <button type="button" onClick={() => incrementItem("everyday-backpack")}>
-        Change submitted quantity
       </button>
       <Link to="/checkout">Return to checkout</Link>
     </div>
@@ -71,7 +62,17 @@ function renderCheckout(
   );
 }
 
-function successfulResponse(order: CompletedOrder = completedOrder): Response {
+async function fillCustomerDetails(user: ReturnType<typeof userEvent.setup>) {
+  await user.type(screen.getByLabelText("Full name"), TEST_CUSTOMER.fullName);
+  await user.type(screen.getByLabelText("Email address"), TEST_CUSTOMER.email);
+  await user.type(screen.getByLabelText("Phone number"), TEST_CUSTOMER.phone);
+  await user.type(screen.getByLabelText("Address"), TEST_CUSTOMER.addressLine1);
+  await user.type(screen.getByLabelText("Town or city"), TEST_CUSTOMER.city);
+  await user.type(screen.getByLabelText("Postcode"), TEST_CUSTOMER.postcode);
+  await user.type(screen.getByLabelText("Country"), TEST_CUSTOMER.country);
+}
+
+function successfulResponse(order = completedOrder): Response {
   return createJsonResponse(order, 201);
 }
 
@@ -94,102 +95,69 @@ function parseRequestBody(requestInit: RequestInit | undefined): Record<string, 
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.mocked(navigateTo).mockClear();
 });
 
 describe("CheckoutPage", () => {
-  it("fills only the fixed synthetic account into labelled read-only fields", async () => {
-    const fetchSpy = vi.fn<typeof fetch>();
-    vi.stubGlobal("fetch", fetchSpy);
-    const user = userEvent.setup();
+  it("renders empty, editable customer fields with no demo-fill affordance", () => {
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>());
     renderCheckout();
 
     expect(screen.getByRole("heading", { name: "Checkout" })).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Demo delivery details" }),
+      screen.getByRole("heading", { name: "Delivery and billing details" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Payment" })).toBeInTheDocument();
-    expect(
-      screen.queryByText("This is a public demo."),
-    ).not.toBeInTheDocument();
     expect(screen.getByLabelText("Full name")).toHaveValue("");
     expect(screen.getByLabelText("Email address")).toHaveValue("");
-
-    await user.click(screen.getByRole("button", { name: "Fill with demo account" }));
-
-    expect(screen.getByLabelText("Full name")).toHaveValue(DEMO_CUSTOMER.fullName);
-    expect(screen.getByLabelText("Email address")).toHaveValue(DEMO_CUSTOMER.email);
-    expect(screen.getByLabelText("Phone number")).toHaveValue(DEMO_CUSTOMER.phone);
-    expect(screen.getByLabelText("Address")).toHaveValue(DEMO_CUSTOMER.addressLine1);
-    expect(screen.getByLabelText("Town or city")).toHaveValue(DEMO_CUSTOMER.city);
-    expect(screen.getByLabelText("Postcode")).toHaveValue(DEMO_CUSTOMER.postcode);
-    expect(screen.getByLabelText("Country")).toHaveValue(DEMO_CUSTOMER.country);
-    for (const input of screen.getAllByRole("textbox")) {
-      expect(input).toHaveAttribute("readonly");
-    }
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole("button", { name: "Fill with demo account" }),
+    ).not.toBeInTheDocument();
   });
 
-  it("validates demo-account selection without submitting or clearing the cart", async () => {
-    const fetchSpy = vi.fn<typeof fetch>();
-    vi.stubGlobal("fetch", fetchSpy);
-    const user = userEvent.setup();
-    renderCheckout();
+  it("blocks submission with an alert when details are incomplete", () => {
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>());
+    const { container } = renderCheckout();
 
-    await user.click(screen.getByRole("button", { name: "Complete order" }));
+    // Bypasses the browser's native `required` gating to exercise this
+    // component's own guard directly.
+    fireEvent.submit(container.querySelector("form") as HTMLFormElement);
 
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Fill the fixed demo account before completing the order.",
+      "Fill in every delivery and billing detail before continuing.",
     );
     expect(screen.getByLabelText("Cart item count")).toHaveTextContent("3");
-    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("sends the exact canonical payload once and clears the cart after confirmation", async () => {
-    let resolveRequest: ((response: Response) => void) | undefined;
-    const pendingResponse = new Promise<Response>((resolve) => {
-      resolveRequest = resolve;
-    });
-    const fetchSpy = vi.fn<typeof fetch>(() => pendingResponse);
+  it("creates the order then navigates to the JazzCash redirect page, clearing the cart", async () => {
+    const fetchSpy = vi.fn<typeof fetch>().mockResolvedValue(successfulResponse());
     vi.stubGlobal("fetch", fetchSpy);
     const user = userEvent.setup();
     renderCheckout();
 
-    await user.click(screen.getByRole("button", { name: "Fill with demo account" }));
-    await user.click(screen.getByRole("button", { name: "Complete order" }));
+    await fillCustomerDetails(user);
+    await user.click(screen.getByRole("button", { name: "Continue to JazzCash" }));
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("button", { name: "Completing order…" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Fill with demo account" })).toBeDisabled();
-    expect(screen.getByLabelText("Cart item count")).toHaveTextContent("3");
-
     const [path, requestInit] = fetchSpy.mock.calls[0] ?? [];
     expect(path).toBe("/api/orders");
-    expect(requestInit).toMatchObject({
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    });
     const payload = parseRequestBody(requestInit);
-    expect(typeof payload.idempotencyKey).toBe("string");
     expect(payload.idempotencyKey).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     );
     expect(payload).toEqual({
       idempotencyKey: payload.idempotencyKey,
-      demoCustomerId: DEMO_CUSTOMER.id,
+      customer: TEST_CUSTOMER,
       lines: [
         { productId: "everyday-backpack", quantity: 2 },
         { productId: "travel-mug", quantity: 1 },
       ],
     });
 
-    resolveRequest?.(successfulResponse());
-
-    expect(
-      await screen.findByRole("heading", { name: "Demo order completed" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("CG-DEAD1234")).toBeInTheDocument();
-    expect(screen.getByText("Payment not configured")).toBeInTheDocument();
-    expect(screen.getByLabelText("Cart item count")).toHaveTextContent("0");
+    expect(await screen.findByLabelText("Cart item count")).toHaveTextContent("0");
+    expect(navigateTo).toHaveBeenCalledWith(
+      `/api/orders/${completedOrder.id}/payment/redirect`,
+    );
   });
 
   it("prevents duplicate concurrent submissions", async () => {
@@ -200,14 +168,14 @@ describe("CheckoutPage", () => {
     const user = userEvent.setup();
     renderCheckout();
 
-    await user.click(screen.getByRole("button", { name: "Fill with demo account" }));
-    await user.dblClick(screen.getByRole("button", { name: "Complete order" }));
+    await fillCustomerDetails(user);
+    await user.dblClick(screen.getByRole("button", { name: "Continue to JazzCash" }));
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(screen.getByLabelText("Cart item count")).toHaveTextContent("3");
   });
 
-  it("preserves the form and cart on failure and reuses the key for a retry", async () => {
+  it("preserves the form and cart on failure and reuses the idempotency key for a retry", async () => {
     const fetchSpy = vi
       .fn<typeof fetch>()
       .mockRejectedValueOnce(new TypeError("network unavailable"))
@@ -216,23 +184,21 @@ describe("CheckoutPage", () => {
     const user = userEvent.setup();
     renderCheckout();
 
-    await user.click(screen.getByRole("button", { name: "Fill with demo account" }));
-    await user.click(screen.getByRole("button", { name: "Complete order" }));
+    await fillCustomerDetails(user);
+    await user.click(screen.getByRole("button", { name: "Continue to JazzCash" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "The order service could not be reached. Try again.",
     );
-    expect(screen.getByLabelText("Full name")).toHaveValue(DEMO_CUSTOMER.fullName);
+    expect(screen.getByLabelText("Full name")).toHaveValue(TEST_CUSTOMER.fullName);
     expect(screen.getByLabelText("Cart item count")).toHaveTextContent("3");
 
-    await user.click(screen.getByRole("button", { name: "Complete order" }));
+    await user.click(screen.getByRole("button", { name: "Continue to JazzCash" }));
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     const firstPayload = parseRequestBody(fetchSpy.mock.calls[0]?.[1]);
     const retryPayload = parseRequestBody(fetchSpy.mock.calls[1]?.[1]);
     expect(retryPayload.idempotencyKey).toBe(firstPayload.idempotencyKey);
-    expect(
-      await screen.findByRole("heading", { name: "Demo order completed" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByLabelText("Cart item count")).toHaveTextContent("0");
   });
 
   it("reuses a saved attempt after remount and shows its original summary", async () => {
@@ -245,8 +211,8 @@ describe("CheckoutPage", () => {
     const user = userEvent.setup();
     renderCheckout();
 
-    await user.click(screen.getByRole("button", { name: "Fill with demo account" }));
-    await user.click(screen.getByRole("button", { name: "Complete order" }));
+    await fillCustomerDetails(user);
+    await user.click(screen.getByRole("button", { name: "Continue to JazzCash" }));
     const initialPayload = parseRequestBody(fetchSpy.mock.calls[0]?.[1]);
 
     await user.click(screen.getByRole("link", { name: "Leave checkout" }));
@@ -257,74 +223,24 @@ describe("CheckoutPage", () => {
     expect(
       screen.getByText(/saved order attempt being retried/i),
     ).toBeInTheDocument();
-    expect(screen.getByText("€186.95")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Complete order" }));
+    expect(screen.getByText("Rs 186.95")).toBeInTheDocument();
+    expect(screen.getByLabelText("Full name")).toHaveValue(TEST_CUSTOMER.fullName);
+    await user.click(screen.getByRole("button", { name: "Continue to JazzCash" }));
 
     const retryPayload = parseRequestBody(fetchSpy.mock.calls[1]?.[1]);
     expect(retryPayload).toEqual(initialPayload);
-    expect(
-      await screen.findByRole("heading", { name: "Demo order completed" }),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText("Cart item count")).toHaveTextContent("1");
+    expect(await screen.findByLabelText("Cart item count")).toHaveTextContent("1");
   });
 
-  it("does not let an unmounted completion erase later cart changes", async () => {
-    let resolveRequest: ((response: Response) => void) | undefined;
-    const fetchSpy = vi.fn<typeof fetch>(
-      () =>
-        new Promise<Response>((resolve) => {
-          resolveRequest = resolve;
-        }),
-    );
-    vi.stubGlobal("fetch", fetchSpy);
-    const user = userEvent.setup();
-    renderCheckout();
-
-    await user.click(screen.getByRole("button", { name: "Fill with demo account" }));
-    await user.click(screen.getByRole("button", { name: "Complete order" }));
-    await user.click(screen.getByRole("link", { name: "Leave checkout" }));
-    await user.click(screen.getByRole("button", { name: "Add later cart item" }));
-    await user.click(screen.getByRole("button", { name: "Change submitted quantity" }));
-
-    resolveRequest?.(successfulResponse());
-
-    expect(await screen.findByLabelText("Cart item count")).toHaveTextContent("4");
-    await user.click(screen.getByRole("link", { name: "Return to checkout" }));
-    expect(
-      await screen.findByRole("heading", { name: "Demo order completed" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("CG-DEAD1234")).toBeInTheDocument();
-  });
-
-  it("rejects an invalid confirmation without clearing the cart", async () => {
-    const fetchSpy = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(JSON.stringify({ ...completedOrder, status: "paid" }), {
-        status: 201,
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
-    vi.stubGlobal("fetch", fetchSpy);
-    const user = userEvent.setup();
-    renderCheckout();
-
-    await user.click(screen.getByRole("button", { name: "Fill with demo account" }));
-    await user.click(screen.getByRole("button", { name: "Complete order" }));
-
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "The order service returned an invalid confirmation.",
-    );
-    expect(screen.getByLabelText("Cart item count")).toHaveTextContent("3");
-    expect(screen.queryByText("CG-DEAD1234")).not.toBeInTheDocument();
-  });
-
-  it("contains no payment-entry controls or claim that the order is paid", () => {
+  it("contains no local card-entry controls and explains the JazzCash hand-off", () => {
     vi.stubGlobal("fetch", vi.fn<typeof fetch>());
     const { container } = renderCheckout();
 
     expect(container.querySelector('input[name*="card" i]')).toBeNull();
     expect(container.querySelector('input[autocomplete^="cc-"]')).toBeNull();
-    expect(screen.queryByText(/^paid$/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/does not collect or confirm payment/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/never sees or stores your card number/i),
+    ).toBeInTheDocument();
   });
 
   it("redirects an empty fresh checkout to the cart page", async () => {

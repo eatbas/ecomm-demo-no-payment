@@ -1,11 +1,11 @@
-import type { CompletedOrder } from "../../../shared/orders";
+import type { Order } from "../../../shared/orders";
 
-import { AdminDemoAccount } from "@/components/admin/AdminDemoAccount";
+import { AdminCustomer } from "@/components/admin/AdminCustomer";
 import { AdminOrderStatus } from "@/components/admin/AdminOrderStatus";
 import { createAdminOrderView } from "@/components/admin/admin-order-view";
 
 interface AdminOrderTableProps {
-  readonly orders: readonly CompletedOrder[];
+  readonly orders: readonly Order[];
 }
 
 export function AdminOrderTable({ orders }: AdminOrderTableProps) {
@@ -20,7 +20,7 @@ export function AdminOrderTable({ orders }: AdminOrderTableProps) {
                 Order
               </th>
               <th className="px-5 py-4 font-semibold" scope="col">
-                Demo account
+                Customer
               </th>
               <th className="px-5 py-4 font-semibold" scope="col">
                 Items
@@ -46,11 +46,11 @@ export function AdminOrderTable({ orders }: AdminOrderTableProps) {
                       className="mt-1 block whitespace-nowrap text-xs text-muted-foreground"
                       dateTime={view.createdAt}
                     >
-                      {view.completedAt}
+                      {view.createdAtLabel}
                     </time>
                   </th>
                   <td className="max-w-56 px-5 py-5">
-                    <AdminDemoAccount customer={view.customer} />
+                    <AdminCustomer customer={view.customer} />
                   </td>
                   <td className="max-w-72 px-5 py-5">
                     <ul className="space-y-3">
@@ -70,7 +70,7 @@ export function AdminOrderTable({ orders }: AdminOrderTableProps) {
                     </p>
                   </td>
                   <td className="px-5 py-5">
-                    <AdminOrderStatus />
+                    <AdminOrderStatus paymentStatus={view.paymentStatus} />
                   </td>
                   <td className="whitespace-nowrap px-5 py-5 text-right text-base font-bold tabular-nums">
                     {view.total}

@@ -1,3 +1,5 @@
+// Prices are PKR paisa (the smallest PKR unit), matching shared/orders.ts's
+// ORDER_CURRENCY and the unit JazzCash's pp_Amount expects directly.
 export const catalogueProducts = [
   {
     id: "everyday-backpack",
