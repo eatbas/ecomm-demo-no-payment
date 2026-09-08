@@ -40,12 +40,13 @@ describe("App", () => {
     );
   });
 
-  it("registers the admin route, gated behind sign-in, without adding it to customer navigation", async () => {
+  it("registers the admin route publicly without adding it to customer navigation", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(null, { status: 401 }),
-      ),
+      vi.fn().mockResolvedValue({
+        json: vi.fn().mockResolvedValue({ orders: [] }),
+        ok: true,
+      }),
     );
     window.history.replaceState({}, "", "/admin");
 
@@ -53,12 +54,16 @@ describe("App", () => {
     render(<App />);
 
     expect(
-      await screen.findByRole("heading", { name: "Admin sign in" }),
+      screen.getByRole("heading", { level: 1, name: "Orders" }),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("Password")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "No completed orders" }),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("navigation", { name: "Primary navigation" }),
     ).not.toHaveTextContent("Admin");
+    expect(screen.queryByLabelText(/password|credential/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: /sign in|log in/i })).toBeNull();
     expect(document.title).toBe("Admin | Common Goods");
 
     await user.click(screen.getByRole("link", { name: "Shop" }));

@@ -4,8 +4,6 @@ import { describe, expect, it } from "vitest";
 import { readServerConfig } from "./config.js";
 
 const requiredSecrets = {
-  ADMIN_PASSWORD_HASH: "admin-hash",
-  ADMIN_SESSION_SECRET: "session-secret",
   JAZZCASH_BASE_URL: "https://onlinepayments.jazzcash.com.pk",
   JAZZCASH_MERCHANT_ID: "MC00001",
   JAZZCASH_PASSWORD: "merchant-password",
@@ -27,8 +25,6 @@ describe("server configuration", () => {
       host: "0.0.0.0",
       port: 8080,
       databasePath: resolve(".data/orders.sqlite"),
-      adminPasswordHash: requiredSecrets.ADMIN_PASSWORD_HASH,
-      adminSessionSecret: requiredSecrets.ADMIN_SESSION_SECRET,
       jazzcash,
     });
     expect(
@@ -38,8 +34,6 @@ describe("server configuration", () => {
       port: 8080,
       databasePath: "/data/orders.sqlite",
       staticRoot: resolve("dist"),
-      adminPasswordHash: requiredSecrets.ADMIN_PASSWORD_HASH,
-      adminSessionSecret: requiredSecrets.ADMIN_SESSION_SECRET,
       jazzcash,
     });
   });
@@ -58,8 +52,6 @@ describe("server configuration", () => {
       port: 3001,
       databasePath: "/data/demo.sqlite",
       staticRoot: "/app/dist",
-      adminPasswordHash: requiredSecrets.ADMIN_PASSWORD_HASH,
-      adminSessionSecret: requiredSecrets.ADMIN_SESSION_SECRET,
       jazzcash,
     });
   });
@@ -83,8 +75,6 @@ describe("server configuration", () => {
   );
 
   it.each([
-    "ADMIN_PASSWORD_HASH",
-    "ADMIN_SESSION_SECRET",
     "JAZZCASH_MERCHANT_ID",
     "JAZZCASH_PASSWORD",
     "JAZZCASH_INTEGRITY_SALT",

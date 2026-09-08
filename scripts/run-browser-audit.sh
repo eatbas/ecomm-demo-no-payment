@@ -18,11 +18,8 @@ cleanup() {
 
 trap cleanup EXIT HUP INT TERM
 
-# Fixed, non-secret values used only for this ephemeral audit container —
-# never real credentials. hashAdminPassword('audit-password') via
-# server/auth/admin-session.ts.
-audit_admin_password="audit-password"
-audit_admin_password_hash='scrypt$c664e1e5ffec230a14126bba1201e67e$5f94f53b88dee042c48406e3b522805cbf9f7d0ccad7d3a0ceec9b03a9c5d5f9ef0a67d56ff81b11b1dff45f69c63990742ec746e5070f191c58ac7455252f0a'
+# Fixed, non-secret value used only for this ephemeral audit container —
+# never a real credential.
 audit_jazzcash_origin="https://jazzcash-audit-stub.invalid"
 
 docker build --tag "${application_image}" .
@@ -35,8 +32,6 @@ docker run --detach \
   --read-only \
   --tmpfs /tmp:rw,noexec,nosuid,size=16m \
   --tmpfs /data:rw,noexec,nosuid,size=32m,uid=1000,gid=1000 \
-  --env ADMIN_PASSWORD_HASH="${audit_admin_password_hash}" \
-  --env ADMIN_SESSION_SECRET="audit-session-secret" \
   --env JAZZCASH_BASE_URL="${audit_jazzcash_origin}" \
   --env JAZZCASH_MERCHANT_ID="audit-merchant-id" \
   --env JAZZCASH_PASSWORD="audit-merchant-password" \
@@ -65,6 +60,5 @@ docker run --rm \
   --ipc=host \
   --network "${audit_network}" \
   --env BROWSER_AUDIT_BASE_URL=http://storefront:8080 \
-  --env BROWSER_AUDIT_ADMIN_PASSWORD="${audit_admin_password}" \
   --env BROWSER_AUDIT_JAZZCASH_ORIGIN="${audit_jazzcash_origin}" \
   "${runner_image}"

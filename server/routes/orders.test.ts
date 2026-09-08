@@ -1,13 +1,7 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it } from "vitest";
 import { buildApp } from "../app.js";
-import {
-  TEST_ADMIN_PASSWORD_HASH,
-  TEST_ADMIN_SESSION_SECRET,
-  TEST_JAZZCASH_CONFIG,
-  createTestCustomer,
-} from "../test/fixtures.js";
-import { ADMIN_SESSION_COOKIE_NAME, createSessionToken } from "../auth/admin-session.js";
+import { TEST_JAZZCASH_CONFIG, createTestCustomer } from "../test/fixtures.js";
 
 const apps: Awaited<ReturnType<typeof buildApp>>[] = [];
 
@@ -20,17 +14,10 @@ const validRequest = {
 async function createTestApp(): Promise<Awaited<ReturnType<typeof buildApp>>> {
   const app = await buildApp({
     databasePath: ":memory:",
-    adminPasswordHash: TEST_ADMIN_PASSWORD_HASH,
-    adminSessionSecret: TEST_ADMIN_SESSION_SECRET,
     jazzcash: TEST_JAZZCASH_CONFIG,
   });
   apps.push(app);
   return app;
-}
-
-function adminCookieHeader(): Record<string, string> {
-  const token = createSessionToken(TEST_ADMIN_SESSION_SECRET);
-  return { cookie: `${ADMIN_SESSION_COOKIE_NAME}=${encodeURIComponent(token)}` };
 }
 
 afterEach(async () => {
@@ -72,29 +59,20 @@ describe("order routes", () => {
     expect(firstResponse.headers["cache-control"]).toBe("no-store");
   });
 
-  it("exposes a newly paid order via the admin endpoint once authenticated, and not before", async () => {
+  it("does not expose a newly created order via the admin endpoint until it is paid", async () => {
     const app = await createTestApp();
-    const created = await app.inject({
+    await app.inject({
       method: "POST",
       url: "/api/orders",
       payload: validRequest,
     });
 
-    const unauthenticated = await app.inject({
+    const response = await app.inject({
       method: "GET",
       url: "/api/admin/orders?limit=1",
     });
-    expect(unauthenticated.statusCode).toBe(401);
-
-    // Not paid yet: authenticated admin sees no orders either.
-    const authenticatedButUnpaid = await app.inject({
-      method: "GET",
-      url: "/api/admin/orders?limit=1",
-      headers: adminCookieHeader(),
-    });
-    expect(authenticatedButUnpaid.statusCode).toBe(200);
-    expect(authenticatedButUnpaid.json()).toEqual({ orders: [] });
-    void created;
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ orders: [] });
   });
 
   it.each([
@@ -174,20 +152,23 @@ describe("order routes", () => {
     });
   });
 
-  it("bounds and validates the authenticated admin order query", async () => {
+  it("bounds and validates the unauthenticated newest-order query", async () => {
     const app = await createTestApp();
-    const headers = adminCookieHeader();
+    const noCredentials = await app.inject({
+      method: "GET",
+      url: "/api/admin/orders",
+    });
     const excessive = await app.inject({
       method: "GET",
       url: "/api/admin/orders?limit=101",
-      headers,
     });
     const unknownQuery = await app.inject({
       method: "GET",
       url: "/api/admin/orders?cursor=secret",
-      headers,
     });
 
+    expect(noCredentials.statusCode).toBe(200);
+    expect(noCredentials.json()).toEqual({ orders: [] });
     expect(excessive.statusCode).toBe(400);
     expect(unknownQuery.statusCode).toBe(400);
   });

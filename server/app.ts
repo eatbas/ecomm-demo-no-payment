@@ -6,7 +6,6 @@ import Fastify, {
 } from "fastify";
 import { extname } from "node:path";
 import type { JazzCashConfig } from "./config.js";
-import { requireAdminSession, registerAdminAuthRoutes } from "./routes/admin-auth.js";
 import { registerAdminOrderRoutes } from "./routes/admin-orders.js";
 import { registerAdminPaymentRoutes } from "./routes/admin-payments.js";
 import {
@@ -40,11 +39,7 @@ export interface BuildAppOptions {
   readonly databasePath: string;
   readonly staticRoot?: string;
   readonly logger?: FastifyServerOptions["logger"];
-  readonly adminPasswordHash: string;
-  readonly adminSessionSecret: string;
   readonly jazzcash: JazzCashConfig;
-  /** Send the cookie `Secure` attribute. False only for plain-HTTP development. */
-  readonly secureCookies?: boolean;
 }
 
 function setSecurityHeaders(reply: {
@@ -106,12 +101,6 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   const orderRepository = new OrderRepository(database);
   const paymentRepository = new PaymentRepository(orderRepository);
   const orderService = new OrderService(orderRepository);
-  const secureCookies = options.secureCookies ?? true;
-  const adminAuthConfig = {
-    adminPasswordHash: options.adminPasswordHash,
-    adminSessionSecret: options.adminSessionSecret,
-    secureCookies,
-  };
   const app = Fastify({
     ajv: { customOptions: { removeAdditional: false } },
     bodyLimit: API_BODY_LIMIT_BYTES,
@@ -210,15 +199,9 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       jazzcash: options.jazzcash,
     });
     registerJazzCashReturnRoute(app, { paymentRepository });
-    registerAdminAuthRoutes(app, adminAuthConfig);
 
-    const adminPreHandler = requireAdminSession(adminAuthConfig);
-    registerAdminOrderRoutes(app, orderService, adminPreHandler);
-    registerAdminPaymentRoutes(
-      app,
-      { paymentRepository, jazzcash: options.jazzcash },
-      adminPreHandler,
-    );
+    registerAdminOrderRoutes(app, orderService);
+    registerAdminPaymentRoutes(app, { paymentRepository, jazzcash: options.jazzcash });
 
     if (options.staticRoot !== undefined) {
       await app.register(staticPlugin, {

@@ -31,89 +31,37 @@ function renderAdminPage() {
   );
 }
 
-function routeAwareFetch(
-  handlers: Partial<Record<string, () => Response>>,
-): ReturnType<typeof vi.fn> {
-  return vi.fn((input: RequestInfo | URL) => {
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-          ? input.href
-          : input.url;
-    const key = Object.keys(handlers).find((path) => url.startsWith(path));
-    if (key === undefined) {
-      throw new Error(`Unexpected fetch to ${url}`);
-    }
-    return Promise.resolve(handlers[key]!());
-  });
-}
-
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
 describe("AdminPage", () => {
-  it("shows the sign-in form when no admin session exists", async () => {
-    vi.stubGlobal(
-      "fetch",
-      routeAwareFetch({
-        "/api/admin/session": () => new Response(null, { status: 401 }),
-      }),
-    );
-
-    renderAdminPage();
-
-    expect(
-      await screen.findByRole("heading", { name: "Admin sign in" }),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText("Password")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Orders" })).not.toBeInTheDocument();
-  });
-
-  it("signs in, loads the empty state, and shows no orders", async () => {
-    const fetchSpy = routeAwareFetch({
-      "/api/admin/session": () => new Response(null, { status: 401 }),
-      "/api/admin/login": () => new Response(null, { status: 204 }),
-      "/api/admin/orders": () => createJsonResponse({ orders: [] }),
-    });
+  it("loads the bounded public endpoint and shows the empty state without authentication UI", async () => {
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValue(createJsonResponse({ orders: [] }));
     vi.stubGlobal("fetch", fetchSpy);
-    const user = userEvent.setup();
+
     renderAdminPage();
 
-    await user.type(await screen.findByLabelText("Password"), "correct-password");
-    await user.click(screen.getByRole("button", { name: "Sign in" }));
-
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Loading completed orders",
+    );
     expect(
       await screen.findByRole("heading", { name: "No completed orders" }),
     ).toBeInTheDocument();
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "/api/admin/login",
-      expect.objectContaining({ method: "POST" }),
-    );
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const [requestPath, requestInit] = fetchSpy.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
+    expect(requestPath).toBe("/api/admin/orders?limit=50");
+    expect(requestInit.signal).toBeInstanceOf(AbortSignal);
+    expect(screen.queryByLabelText(/password|credential/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /sign in|log in/i })).toBeNull();
   });
 
-  it("shows an error and stays on the sign-in form for a wrong password", async () => {
-    vi.stubGlobal(
-      "fetch",
-      routeAwareFetch({
-        "/api/admin/session": () => new Response(null, { status: 401 }),
-        "/api/admin/login": () => new Response(null, { status: 401 }),
-      }),
-    );
-    const user = userEvent.setup();
-    renderAdminPage();
-
-    await user.type(await screen.findByLabelText("Password"), "wrong-password");
-    await user.click(screen.getByRole("button", { name: "Sign in" }));
-
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Incorrect admin password.",
-    );
-    expect(screen.getByRole("heading", { name: "Admin sign in" })).toBeInTheDocument();
-  });
-
-  it("renders paid order details, including real payment status, once signed in", async () => {
+  it("renders paid order details as text in semantic desktop and mobile views", async () => {
     const maliciousName = '<img src="x" onerror="alert(1)">';
     const orderWithUntrustedText = createOrderFixture({
       reference: paidOrder.reference,
@@ -131,11 +79,7 @@ describe("AdminPage", () => {
     });
     vi.stubGlobal(
       "fetch",
-      routeAwareFetch({
-        "/api/admin/session": () => new Response(null, { status: 204 }),
-        "/api/admin/orders": () =>
-          createJsonResponse({ orders: [orderWithUntrustedText] }),
-      }),
+      vi.fn().mockResolvedValue(createJsonResponse({ orders: [orderWithUntrustedText] })),
     );
 
     const { container } = renderAdminPage();
@@ -147,7 +91,7 @@ describe("AdminPage", () => {
     expect(within(table).getByText("CG-ABC12345")).toBeInTheDocument();
     expect(within(table).getByText(paidOrder.customer.fullName)).toBeInTheDocument();
     expect(within(table).getByText("Rs 158.00")).toBeInTheDocument();
-    expect(screen.getAllByText("Paid").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Paid")).not.toHaveLength(0);
     expect(screen.getAllByText(maliciousName)).toHaveLength(2);
     expect(container.querySelector("img")).toBeNull();
 
@@ -155,85 +99,87 @@ describe("AdminPage", () => {
       name: "Completed demo orders",
     });
     expect(
-      within(mobileList).getByRole("heading", { level: 2, name: "CG-ABC12345" }),
+      within(mobileList).getByRole("heading", {
+        level: 2,
+        name: "CG-ABC12345",
+      }),
     ).toBeInTheDocument();
     expect(
-      within(mobileList).getByRole("heading", { level: 3, name: "Customer" }),
+      within(mobileList).getByRole("heading", {
+        level: 3,
+        name: "Customer",
+      }),
     ).toBeInTheDocument();
-    expect(
-      within(mobileList).getByText(paidOrder.customer.phone),
-    ).toBeInTheDocument();
+    expect(within(mobileList).getByText(paidOrder.customer.phone)).toBeInTheDocument();
     expect(within(mobileList).getByText("Server total")).toBeInTheDocument();
   });
 
   it("shows a useful error and retries the read-only request", async () => {
-    let orderCallCount = 0;
-    vi.stubGlobal(
-      "fetch",
-      routeAwareFetch({
-        "/api/admin/session": () => new Response(null, { status: 204 }),
-        "/api/admin/orders": () => {
-          orderCallCount += 1;
-          return orderCallCount === 1
-            ? createJsonResponse(
-                {
-                  code: "INTERNAL_ERROR",
-                  message: "The order service is temporarily unavailable.",
-                },
-                503,
-              )
-            : createJsonResponse({ orders: [] });
-        },
-      }),
-    );
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce(
+        createJsonResponse(
+          {
+            code: "INTERNAL_ERROR",
+            message: "The demo order service is temporarily unavailable.",
+          },
+          503,
+        ),
+      )
+      .mockResolvedValueOnce(createJsonResponse({ orders: [] }));
+    vi.stubGlobal("fetch", fetchSpy);
     const user = userEvent.setup();
+
     renderAdminPage();
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("The order service is temporarily unavailable.");
+    expect(alert).toHaveTextContent(
+      "The demo order service is temporarily unavailable.",
+    );
     await user.click(within(alert).getByRole("button", { name: "Retry" }));
 
     expect(
       await screen.findByRole("heading", { name: "No completed orders" }),
     ).toBeInTheDocument();
-    expect(orderCallCount).toBe(2);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy.mock.calls[1]?.[0]).toBe("/api/admin/orders?limit=50");
   });
 
   it("rejects an invalid response without rendering its values", async () => {
     vi.stubGlobal(
       "fetch",
-      routeAwareFetch({
-        "/api/admin/session": () => new Response(null, { status: 204 }),
-        "/api/admin/orders": () =>
-          createJsonResponse({
-            orders: [{ ...paidOrder, paymentStatus: "not-a-real-status" }],
-          }),
-      }),
+      vi.fn().mockResolvedValue(
+        createJsonResponse({
+          orders: [{ ...paidOrder, paymentStatus: "not-a-real-status" }],
+        }),
+      ),
     );
 
     renderAdminPage();
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("invalid order list");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "invalid order list",
+    );
     expect(screen.queryByText("CG-ABC12345")).toBeNull();
   });
 
-  it("signs out and returns to the sign-in form", async () => {
-    vi.stubGlobal(
-      "fetch",
-      routeAwareFetch({
-        "/api/admin/session": () => new Response(null, { status: 204 }),
-        "/api/admin/orders": () => createJsonResponse({ orders: [] }),
-        "/api/admin/logout": () => new Response(null, { status: 204 }),
-      }),
+  it("aborts loading on unmount", () => {
+    let resolveRequest: ((response: Response) => void) | undefined;
+    const fetchSpy = vi.fn().mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveRequest = resolve;
+        }),
     );
-    const user = userEvent.setup();
-    renderAdminPage();
+    vi.stubGlobal("fetch", fetchSpy);
+    const { unmount } = renderAdminPage();
 
-    await screen.findByRole("heading", { name: "Orders" });
-    await user.click(screen.getByRole("button", { name: "Sign out" }));
+    const requestInit = fetchSpy.mock.calls[0]?.[1] as RequestInit | undefined;
+    expect(requestInit?.signal?.aborted).toBe(false);
 
-    expect(
-      await screen.findByRole("heading", { name: "Admin sign in" }),
-    ).toBeInTheDocument();
+    unmount();
+
+    expect(requestInit?.signal?.aborted).toBe(true);
+    resolveRequest?.(createJsonResponse({ orders: [] }));
   });
 });

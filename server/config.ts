@@ -15,8 +15,6 @@ export interface ServerConfig {
   readonly port: number;
   readonly databasePath: string;
   readonly staticRoot?: string;
-  readonly adminPasswordHash: string;
-  readonly adminSessionSecret: string;
   readonly jazzcash: JazzCashConfig;
 }
 
@@ -114,14 +112,6 @@ export function readServerConfig(
       configuredDatabasePath ??
       (production ? "/data/orders.sqlite" : resolve(".data/orders.sqlite")),
     ...(staticRoot === undefined ? {} : { staticRoot }),
-    adminPasswordHash: readRequiredValue(
-      "ADMIN_PASSWORD_HASH",
-      environment.ADMIN_PASSWORD_HASH,
-    ),
-    adminSessionSecret: readRequiredValue(
-      "ADMIN_SESSION_SECRET",
-      environment.ADMIN_SESSION_SECRET,
-    ),
     jazzcash: readJazzCashConfig(environment),
   };
 }

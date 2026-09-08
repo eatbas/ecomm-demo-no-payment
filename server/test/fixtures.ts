@@ -1,9 +1,4 @@
 import type { JazzCashConfig } from "../config.js";
-import { hashAdminPassword } from "../auth/admin-session.js";
-
-export const TEST_ADMIN_PASSWORD = "correct-horse-battery-staple";
-export const TEST_ADMIN_PASSWORD_HASH = hashAdminPassword(TEST_ADMIN_PASSWORD);
-export const TEST_ADMIN_SESSION_SECRET = "test-admin-session-secret";
 
 export const TEST_JAZZCASH_CONFIG: JazzCashConfig = {
   baseUrl: "https://onlinepayments.jazzcash.example.test",

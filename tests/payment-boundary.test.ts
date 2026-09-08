@@ -219,32 +219,6 @@ describe("payment boundary scanner", () => {
     await expect(runScanner(rootDirectory)).resolves.toMatchObject({ stderr: "" });
   });
 
-  it("allows one dedicated same-origin admin auth API client", async () => {
-    const rootDirectory = await createFixture({
-      path: "src/features/admin/admin.api.ts",
-      value: `
-        export function checkAdminSession() { return fetch("/api/admin/session"); }
-        export function adminLogin() { return fetch("/api/admin/login"); }
-        export function adminLogout() { return fetch("/api/admin/logout"); }
-      `,
-    });
-
-    await expect(runScanner(rootDirectory)).resolves.toMatchObject({ stderr: "" });
-  });
-
-  it("rejects an admin auth client missing one of its approved endpoints", async () => {
-    const rootDirectory = await createFixture({
-      path: "src/features/admin/admin.api.ts",
-      value: `
-        export function checkAdminSession() { return fetch("/api/admin/session"); }
-        export function adminLogin() { return fetch("/api/admin/login"); }
-      `,
-    });
-
-    const stderr = await runScannerExpectingFailure(rootDirectory);
-    expect(stderr).toContain("missing required fetch to admin logout");
-  });
-
   it.each([
     [
       "a dynamic target",

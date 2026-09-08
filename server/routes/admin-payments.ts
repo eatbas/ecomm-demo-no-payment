@@ -1,4 +1,4 @@
-import type { FastifyInstance, preHandlerHookHandler } from "fastify";
+import type { FastifyInstance } from "fastify";
 import type { JazzCashConfig } from "../config.js";
 import {
   performStatusInquiry,
@@ -34,11 +34,9 @@ export interface AdminPaymentRouteDependencies {
 export function registerAdminPaymentRoutes(
   app: FastifyInstance,
   deps: AdminPaymentRouteDependencies,
-  preHandler: preHandlerHookHandler,
 ): void {
   app.post<{ Params: RecheckParams }>(
     "/api/admin/payments/:txnRefNo/recheck",
-    { preHandler },
     async (request, reply) => {
       const payment = deps.paymentRepository.findByTxnRefNo(
         request.params.txnRefNo,

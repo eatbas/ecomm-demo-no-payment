@@ -2,7 +2,7 @@
 
 A React shop with three fixed products, a persistent browser cart, real
 customer checkout, and card payment via **JazzCash** (hosted page redirection,
-`pp_TxnType=MPAY`), with durable orders and an authenticated admin order view.
+`pp_TxnType=MPAY`), with durable orders and a public, read-only admin order view.
 
 ## Data and payment policy
 
@@ -11,13 +11,20 @@ checkout (name, email, phone, address) and stores them with each order. It
 never collects or stores card numbers, CVVs, or any other card data: JazzCash
 hosts the card-entry page itself, and this application only ever redirects
 the browser there and later confirms the outcome via JazzCash's Status
-Inquiry and IPN APIs. `/admin` and its order-list API require a signed-in
-admin session (see [JazzCash payment integration](#jazzcash-payment-integration)
-below) because they expose that customer data and payment status.
+Inquiry and IPN APIs.
 
-Running this in production requires the secrets and admin credential
-described in [Coolify deployment](#coolify-deployment) below, and carries the
-same data-protection obligations as any checkout that stores real customer
+**`/admin` and its order-list/recheck APIs are public and unauthenticated**,
+matching this repository's original demo posture — deliberately, for a
+staging environment. They expose real customer names, addresses, and payment
+status to anyone who can reach the deployment. Do not point this
+configuration at a deployment reachable by anyone other than trusted staging
+users; add authentication in front of `/admin` (a platform-level basic-auth
+gate, a VPN, or reintroducing an application-level login) before using this
+with real customers in production.
+
+Running this in production requires the JazzCash secrets described in
+[Coolify deployment](#coolify-deployment) below, and carries the same
+data-protection obligations as any checkout that stores real customer
 information — retention, access control, and incident handling are the
 deploying operator's responsibility.
 
@@ -29,16 +36,15 @@ deploying operator's responsibility.
 | `/cart` | Cart quantities, removal, clearing, and subtotal |
 | `/checkout` | Real customer details and JazzCash card payment |
 | `/checkout/confirmation` | Polls and displays the order's payment status after returning from JazzCash |
-| `/admin` | Admin sign-in, then a read-only list of paid orders |
+| `/admin` | Public, read-only list of paid orders |
 | `/healthz` | Application and database readiness response |
 | `POST /api/orders` | Validate and persist an idempotent order, `awaiting_payment` |
 | `GET /api/orders/:id/status` | Same-origin, unauthenticated: `{ id, reference, paymentStatus }` only (the order id is an unguessable capability token; no PII is returned) |
 | `GET /api/orders/:id/payment/redirect` | Signs and renders the JazzCash hosted-checkout auto-submit form |
 | `POST /checkout/return` | JazzCash's redirect callback (undocumented payload — never trusted for payment status, only used to route back to `/checkout/confirmation`) |
 | `POST /api/payments/jazzcash/ipn` | JazzCash's server-to-server payment notification |
-| `POST /api/admin/login`, `POST /api/admin/logout`, `GET /api/admin/session` | Admin session cookie lifecycle |
-| `GET /api/admin/orders?limit=50` | Paid orders, newest first (admin session required) |
-| `POST /api/admin/payments/:txnRefNo/recheck` | Admin-triggered JazzCash Status Inquiry reconciliation (admin session required) |
+| `GET /api/admin/orders?limit=50` | Paid orders, newest first |
+| `POST /api/admin/payments/:txnRefNo/recheck` | Triggers a JazzCash Status Inquiry reconciliation for one payment |
 | Any other client route | Customer-facing not-found view |
 
 The browser submits an idempotency key, real customer details, and product
@@ -71,8 +77,8 @@ hand-off.
   single-use script nonce) so every other response keeps the strict default.
   The maintained boundary scanner continues to reject other payment
   providers, payment credentials, analytics, external browser URLs, and
-  browser networking outside the two dedicated same-origin API clients
-  (`src/features/orders/order.api.ts`, `src/features/admin/admin.api.ts`).
+  browser networking outside the one dedicated same-origin API client
+  (`src/features/orders/order.api.ts`).
 
 ## JazzCash payment integration
 
@@ -88,8 +94,8 @@ IPN moves a payment to `ambiguous`, pending that confirmation.
 
 Status Inquiry must not be called within 10 minutes of initiating a payment
 (JazzCash's own documented minimum wait). There is no background scheduler in
-this deployment; `POST /api/admin/payments/:txnRefNo/recheck` (admin session
-required) is the documented way to trigger reconciliation for a payment stuck
+this deployment; `POST /api/admin/payments/:txnRefNo/recheck` is the
+documented way to trigger reconciliation for a payment stuck
 `awaiting_payment` or `ambiguous`.
 
 Required runtime secrets (see `.env.example`):
@@ -99,8 +105,6 @@ Required runtime secrets (see `.env.example`):
 | `JAZZCASH_BASE_URL` | JazzCash host origin only (e.g. the sandbox/production host JazzCash gives you) — never a literal in source, only ever read from this variable |
 | `JAZZCASH_MERCHANT_ID`, `JAZZCASH_PASSWORD`, `JAZZCASH_INTEGRITY_SALT` | From the JazzCash portal, Integration > Credentials |
 | `JAZZCASH_RETURN_URL` | Pre-registered with JazzCash, byte-identical on every request; path must be exactly `/checkout/return` |
-| `ADMIN_PASSWORD_HASH` | Generated with `hashAdminPassword()` in `server/auth/admin-session.ts` |
-| `ADMIN_SESSION_SECRET` | Any long random string; rotating it signs out every admin session |
 
 JazzCash prints the **same host for sandbox and production** in every guide
 in its documentation — the environment is selected by which credentials you
@@ -174,8 +178,8 @@ ephemeral writable `/data`, verifies the empty admin view, and independently
 exercises the customer-to-admin order journey at desktop, mobile, and 320 px
 widths. Responsive table/card visibility, console errors, failed or external
 requests, lost state, inaccessible focus, or horizontal overflow fail the
-audit. **The audit script itself supplies fixed JazzCash and admin
-environment values it needs to build/run the container; it does not exercise
+audit. **The audit script itself supplies fixed JazzCash environment values
+it needs to build/run the container; it does not exercise
 a real JazzCash sandbox transaction** — that remains a manual verification
 step against JazzCash's sandbox once real credentials are available.
 
@@ -191,8 +195,6 @@ docker run --detach --rm \
   --tmpfs /tmp:rw,noexec,nosuid,size=16m \
   --volume ecomm-demo-orders-smoke:/data \
   --publish 127.0.0.1:8080:8080 \
-  --env ADMIN_PASSWORD_HASH='<scrypt hash — see .env.example>' \
-  --env ADMIN_SESSION_SECRET='<a random string>' \
   --env JAZZCASH_BASE_URL='https://onlinepayments.jazzcash.com.pk' \
   --env JAZZCASH_MERCHANT_ID='<merchant id>' \
   --env JAZZCASH_PASSWORD='<merchant password>' \
@@ -213,8 +215,8 @@ curl --fail \
 ```
 
 The created order returns `paymentStatus: "awaiting_payment"` and does not
-appear in `GET /api/admin/orders` (admin session required, and it lists only
-`paid` orders) until a JazzCash payment against it is confirmed.
+appear in `GET /api/admin/orders` (which lists only `paid` orders) until a
+JazzCash payment against it is confirmed.
 
 Stop the container, start a replacement with the same volume and command, then
 confirm the order's `GET /api/orders/<id>/status` still returns the same result.
@@ -247,7 +249,7 @@ Create an application from this repository with these settings:
 | Health method and path | `GET /healthz` |
 | Health port and expected status | `8080`, HTTP 200 |
 | Persistent storage | Named volume mounted at `/data` |
-| Runtime environment variables/secrets | `ADMIN_PASSWORD_HASH`, `ADMIN_SESSION_SECRET`, `JAZZCASH_BASE_URL`, `JAZZCASH_MERCHANT_ID`, `JAZZCASH_PASSWORD`, `JAZZCASH_INTEGRITY_SALT`, `JAZZCASH_RETURN_URL` — all required, see [JazzCash payment integration](#jazzcash-payment-integration) |
+| Runtime environment variables/secrets | `JAZZCASH_BASE_URL`, `JAZZCASH_MERCHANT_ID`, `JAZZCASH_PASSWORD`, `JAZZCASH_INTEGRITY_SALT`, `JAZZCASH_RETURN_URL` — all required, see [JazzCash payment integration](#jazzcash-payment-integration) |
 | Host port mappings | Empty; use the Coolify proxy |
 
 The container runs as the unprivileged `node` user. It supports a read-only root

@@ -4,14 +4,10 @@ import { chromium } from "playwright";
 
 const configuredBaseUrl = process.env.BROWSER_AUDIT_BASE_URL ?? "http://storefront:8080";
 const baseUrl = new URL(configuredBaseUrl);
-const adminPassword = process.env.BROWSER_AUDIT_ADMIN_PASSWORD;
 const jazzcashOrigin = process.env.BROWSER_AUDIT_JAZZCASH_ORIGIN;
 
 if (!new Set(["http:", "https:"]).has(baseUrl.protocol)) {
   throw new Error("BROWSER_AUDIT_BASE_URL must use HTTP or HTTPS.");
-}
-if (adminPassword === undefined || adminPassword.length === 0) {
-  throw new Error("BROWSER_AUDIT_ADMIN_PASSWORD is required.");
 }
 if (jazzcashOrigin === undefined || jazzcashOrigin.length === 0) {
   throw new Error("BROWSER_AUDIT_JAZZCASH_ORIGIN is required.");
@@ -224,17 +220,8 @@ async function assertCustomerJourney(page) {
   );
 }
 
-async function assertAdminLogin(page, viewportName) {
+async function assertAdminPageLoaded(page) {
   await page.goto(new URL("/admin", baseUrl).href, { waitUntil: "networkidle" });
-  await page.getByRole("heading", { name: "Admin sign in" }).waitFor();
-  assert.equal(
-    await hasHorizontalOverflow(page),
-    false,
-    `${viewportName}: admin sign-in horizontal overflow`,
-  );
-
-  await page.getByLabel("Password").fill(adminPassword);
-  await page.getByRole("button", { name: "Sign in" }).click();
   await page.getByRole("heading", { name: "Orders", level: 1 }).waitFor();
 }
 
@@ -289,7 +276,7 @@ async function assertAdminResponsiveLayout(page, viewportName) {
 }
 
 async function assertEmptyAdminPage(page, viewportName) {
-  await assertAdminLogin(page, viewportName);
+  await assertAdminPageLoaded(page);
   await page.getByRole("heading", { name: "No completed orders", level: 2 }).waitFor();
   assert.equal(await page.locator("table").count(), 0);
   assert.equal(await page.locator('ul[aria-label="Completed demo orders"]').count(), 0);
@@ -307,7 +294,7 @@ async function assertEmptyAdminPage(page, viewportName) {
  * in the admin view, which lists only `paid` orders.
  */
 async function assertUnpaidOrderNotAdminVisible(page, viewportName) {
-  await assertAdminLogin(page, viewportName);
+  await assertAdminPageLoaded(page);
   await assertAdminResponsiveLayout(page, viewportName);
   await page.getByRole("heading", { name: "No completed orders", level: 2 }).waitFor();
   assert.equal(

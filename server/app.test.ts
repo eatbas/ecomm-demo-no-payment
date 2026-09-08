@@ -5,11 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { buildApp } from "./app.js";
-import {
-  TEST_ADMIN_PASSWORD_HASH,
-  TEST_ADMIN_SESSION_SECRET,
-  TEST_JAZZCASH_CONFIG,
-} from "./test/fixtures.js";
+import { TEST_JAZZCASH_CONFIG } from "./test/fixtures.js";
 
 const apps: Awaited<ReturnType<typeof buildApp>>[] = [];
 const temporaryDirectories: string[] = [];
@@ -24,8 +20,6 @@ async function createStaticApp(): Promise<Awaited<ReturnType<typeof buildApp>>> 
   const app = await buildApp({
     databasePath: ":memory:",
     staticRoot,
-    adminPasswordHash: TEST_ADMIN_PASSWORD_HASH,
-    adminSessionSecret: TEST_ADMIN_SESSION_SECRET,
     jazzcash: TEST_JAZZCASH_CONFIG,
   });
   apps.push(app);

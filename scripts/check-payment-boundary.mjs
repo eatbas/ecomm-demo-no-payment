@@ -47,23 +47,8 @@ const allowedOrderFetchEndpoints = [
     literals: new Set(["`/api/orders/${orderId}/status`"]),
   },
 ];
-const allowedAdminAuthFetchEndpoints = [
-  {
-    name: "admin session check",
-    literals: new Set(['"/api/admin/session"', "'/api/admin/session'", "`/api/admin/session`"]),
-  },
-  {
-    name: "admin login",
-    literals: new Set(['"/api/admin/login"', "'/api/admin/login'", "`/api/admin/login`"]),
-  },
-  {
-    name: "admin logout",
-    literals: new Set(['"/api/admin/logout"', "'/api/admin/logout'", "`/api/admin/logout`"]),
-  },
-];
 const allowedNetworkFiles = new Map([
   ["src/features/orders/order.api.ts", allowedOrderFetchEndpoints],
-  ["src/features/admin/admin.api.ts", allowedAdminAuthFetchEndpoints],
 ]);
 const browserFetchPattern = /\bfetch\s*\(/;
 
