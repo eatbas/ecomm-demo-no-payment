@@ -77,9 +77,9 @@ describe("AdminPage", () => {
     expect(within(table).getByRole("columnheader", { name: "Order" })).toBeVisible();
     expect(within(table).getByText("CG-ABC12345")).toBeInTheDocument();
     expect(within(table).getByText("Alex Example")).toBeInTheDocument();
-    expect(within(table).getByText("€158.00")).toBeInTheDocument();
+    expect(within(table).getByText(/^Rs\s*158\.00$/)).toBeInTheDocument();
     expect(screen.getAllByText("Completed")).not.toHaveLength(0);
-    expect(screen.getAllByText("Payment not configured")).not.toHaveLength(0);
+    expect(screen.getAllByText("Awaiting payment")).not.toHaveLength(0);
     expect(screen.getAllByText(maliciousName)).toHaveLength(2);
     expect(container.querySelector("img")).toBeNull();
 
@@ -138,7 +138,7 @@ describe("AdminPage", () => {
       "fetch",
       vi.fn().mockResolvedValue(
         createJsonResponse({
-          orders: [{ ...completedOrder, paymentStatus: "paid" }],
+          orders: [{ ...completedOrder, paymentStatus: "invalid_status" }],
         }),
       ),
     );
@@ -149,7 +149,7 @@ describe("AdminPage", () => {
       "invalid order list",
     );
     expect(screen.queryByText("CG-ABC12345")).toBeNull();
-    expect(screen.queryByText("paid")).toBeNull();
+    expect(screen.queryByText("invalid_status")).toBeNull();
   });
 
   it("aborts loading on unmount", () => {

@@ -6,10 +6,13 @@ import Fastify, {
 } from "fastify";
 import { extname } from "node:path";
 import { openOrderDatabase } from "./db/database.js";
+import type { JazzCashConfig } from "./config.js";
 import { IdempotencyConflictError, OrderRepository } from "./orders/order.repository.js";
 import { OrderService, OrderValidationError } from "./orders/order.service.js";
+import { PaymentRepository } from "./payments/payment.repository.js";
 import { registerAdminOrderRoutes } from "./routes/admin-orders.js";
 import { registerOrderRoutes } from "./routes/orders.js";
+import { registerPaymentRoutes } from "./routes/payments.js";
 
 const API_BODY_LIMIT_BYTES = 16 * 1024;
 const HASHED_ASSET_PATH = /[/\\]assets[/\\].+-[A-Za-z0-9_-]{8,}\.[^/\\]+$/;
@@ -31,12 +34,16 @@ export interface BuildAppOptions {
   readonly databasePath: string;
   readonly staticRoot?: string;
   readonly logger?: FastifyServerOptions["logger"];
+  readonly jazzcash?: JazzCashConfig;
 }
 
 function setSecurityHeaders(reply: {
   header(name: string, value: string): unknown;
+  hasHeader?(name: string): boolean;
 }): void {
-  reply.header("Content-Security-Policy", CONTENT_SECURITY_POLICY);
+  if (typeof reply.hasHeader !== "function" || !reply.hasHeader("Content-Security-Policy")) {
+    reply.header("Content-Security-Policy", CONTENT_SECURITY_POLICY);
+  }
   reply.header(
     "Permissions-Policy",
     "camera=(), geolocation=(), microphone=(), payment=(), usb=()",
@@ -85,6 +92,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   const database = openOrderDatabase(options.databasePath);
   const repository = new OrderRepository(database);
   const service = new OrderService(repository);
+  const paymentRepository = new PaymentRepository(repository);
   const app = Fastify({
     ajv: { customOptions: { removeAdditional: false } },
     bodyLimit: API_BODY_LIMIT_BYTES,
@@ -115,6 +123,15 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
 
     registerOrderRoutes(app, service);
     registerAdminOrderRoutes(app, service);
+
+    if (options.jazzcash !== undefined) {
+      registerPaymentRoutes({
+        app,
+        orderService: service,
+        paymentRepository,
+        jazzcash: options.jazzcash,
+      });
+    }
 
     if (options.staticRoot !== undefined) {
       await app.register(staticPlugin, {

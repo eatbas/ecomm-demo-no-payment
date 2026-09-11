@@ -33,7 +33,7 @@ describe("ProductCard", () => {
       "src",
       product.imagePath,
     );
-    expect(screen.getByText("€79.00")).toBeInTheDocument();
+    expect(screen.getByText(/Rs\s*79\.00/)).toBeInTheDocument();
 
     const addButton = screen.getByRole("button", {
       name: `Add ${product.name} to cart`,

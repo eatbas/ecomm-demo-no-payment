@@ -70,7 +70,7 @@ export function AdminOrderTable({ orders }: AdminOrderTableProps) {
                     </p>
                   </td>
                   <td className="px-5 py-5">
-                    <AdminOrderStatus />
+                    <AdminOrderStatus paymentStatus={view.paymentStatus} />
                   </td>
                   <td className="whitespace-nowrap px-5 py-5 text-right text-base font-bold tabular-nums">
                     {view.total}

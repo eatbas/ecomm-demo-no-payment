@@ -2,7 +2,7 @@ import type { HTMLAttributes } from "react";
 
 import { cn } from "@/lib/utils";
 
-type StatusChipTone = "positive" | "neutral";
+type StatusChipTone = "positive" | "neutral" | "negative";
 
 interface StatusChipProps extends HTMLAttributes<HTMLSpanElement> {
   readonly tone?: StatusChipTone;
@@ -19,7 +19,9 @@ export function StatusChip({
         "inline-flex min-h-7 items-center rounded-full px-3 py-1 text-xs font-bold tracking-wide",
         tone === "positive"
           ? "bg-emerald-100 text-emerald-900"
-          : "bg-secondary text-secondary-foreground",
+          : tone === "negative"
+            ? "bg-rose-100 text-rose-900"
+            : "bg-secondary text-secondary-foreground",
         className,
       )}
       {...props}

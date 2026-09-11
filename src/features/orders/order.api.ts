@@ -8,6 +8,8 @@ import {
   parseAdminOrdersResponse,
   parseCompletedOrder,
   parseOrderErrorResponse,
+  parseOrderStatusResponse,
+  type OrderStatusResponse,
 } from "@/features/orders/order.validation";
 
 export class OrderApiError extends Error {
@@ -86,4 +88,31 @@ export async function listCompletedOrders(
   }
 
   return response;
+}
+
+export async function getOrderStatus(
+  orderId: string,
+  signal?: AbortSignal,
+): Promise<OrderStatusResponse> {
+  let response: Response;
+  try {
+    response = await fetch(`/api/orders/${orderId}/status`, { signal });
+  } catch {
+    throw new OrderApiError("The order service could not be reached. Try again.");
+  }
+
+  const body = await readJsonResponse(response);
+  if (!response.ok) {
+    const errorResponse = parseOrderErrorResponse(body);
+    throw new OrderApiError(
+      errorResponse?.message ?? "The order service rejected the request.",
+    );
+  }
+
+  const status = parseOrderStatusResponse(body);
+  if (status === null) {
+    throw new OrderApiError("The order service returned an invalid status response.");
+  }
+
+  return status;
 }

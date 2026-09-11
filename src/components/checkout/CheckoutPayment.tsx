@@ -29,13 +29,13 @@ export function CheckoutPayment({
           Payment
         </CardTitle>
         <p className="text-base leading-7 text-muted-foreground">
-          Completing this demo order does not collect or confirm payment.
+          You will be redirected to JazzCash to complete your card payment securely.
         </p>
       </CardHeader>
       <CardContent className="px-6 sm:px-8">
         <p className="text-sm leading-6 text-muted-foreground">
-          No card, wallet, or billing details are accepted. The saved order stays
-          unpaid on the public admin page.
+          Payments are handled via JazzCash hosted checkout. No card numbers or
+          sensitive financial details are collected or stored on this server.
         </p>
         {errorMessage !== null ? (
           <Alert role="alert" className="mt-5 border-destructive/40 bg-destructive/10">
@@ -53,7 +53,7 @@ export function CheckoutPayment({
           disabled={isSubmitting}
           onClick={onSubmit}
         >
-          {isSubmitting ? "Completing order…" : "Complete order"}
+          {isSubmitting ? "Redirecting to payment…" : "Pay by card"}
         </Button>
       </CardFooter>
     </Card>

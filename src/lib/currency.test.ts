@@ -7,11 +7,11 @@ import {
 } from "@/lib/currency";
 
 describe("formatCurrency", () => {
-  it("formats whole and fractional euro amounts using the British locale", () => {
-    expect(CURRENCY).toBe("EUR");
-    expect(CURRENCY_LOCALE).toBe("en-GB");
-    expect(formatCurrency(7900)).toBe("€79.00");
-    expect(formatCurrency(2895)).toBe("€28.95");
+  it("formats whole and fractional rupee amounts using the Pakistani locale", () => {
+    expect(CURRENCY).toBe("PKR");
+    expect(CURRENCY_LOCALE).toBe("en-PK");
+    expect(formatCurrency(7900)).toBe("Rs\u00a079.00");
+    expect(formatCurrency(2895)).toBe("Rs\u00a028.95");
   });
 
   it("rejects values that cannot represent integer cents safely", () => {

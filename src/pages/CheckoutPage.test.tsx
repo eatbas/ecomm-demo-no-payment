@@ -1,10 +1,11 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Link, MemoryRouter, Route, Routes } from "react-router";
 
 import { DEMO_CUSTOMER, type CompletedOrder } from "../../shared/orders";
 import { CartProvider, useCart } from "@/features/cart/CartContext";
+import { navigation } from "@/lib/navigation";
 import { CheckoutPage } from "@/pages/CheckoutPage";
 import { seedStoredCart } from "@/test/cart";
 import {
@@ -92,7 +93,14 @@ function parseRequestBody(requestInit: RequestInit | undefined): Record<string, 
   return parsedBody as Record<string, unknown>;
 }
 
+let assignSpy: ReturnType<typeof vi.spyOn>;
+
+beforeEach(() => {
+  assignSpy = vi.spyOn(navigation, "assign").mockImplementation(() => {});
+});
+
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -135,13 +143,14 @@ describe("CheckoutPage", () => {
     const user = userEvent.setup();
     renderCheckout();
 
-    await user.click(screen.getByRole("button", { name: "Complete order" }));
+    await user.click(screen.getByRole("button", { name: "Pay by card" }));
 
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Fill the fixed demo account before completing the order.",
     );
     expect(screen.getByLabelText("Cart item count")).toHaveTextContent("3");
     expect(fetchSpy).not.toHaveBeenCalled();
+    expect(assignSpy).not.toHaveBeenCalled();
   });
 
   it("sends the exact canonical payload once and clears the cart after confirmation", async () => {
@@ -155,10 +164,10 @@ describe("CheckoutPage", () => {
     renderCheckout();
 
     await user.click(screen.getByRole("button", { name: "Fill with demo account" }));
-    await user.click(screen.getByRole("button", { name: "Complete order" }));
+    await user.click(screen.getByRole("button", { name: "Pay by card" }));
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("button", { name: "Completing order…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Redirecting to payment…" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Fill with demo account" })).toBeDisabled();
     expect(screen.getByLabelText("Cart item count")).toHaveTextContent("3");
 
@@ -184,11 +193,11 @@ describe("CheckoutPage", () => {
 
     resolveRequest?.(successfulResponse());
 
-    expect(
-      await screen.findByRole("heading", { name: "Demo order completed" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("CG-DEAD1234")).toBeInTheDocument();
-    expect(screen.getByText("Payment not configured")).toBeInTheDocument();
+    await vi.waitFor(() => {
+      expect(assignSpy).toHaveBeenCalledWith(
+        `/api/orders/${completedOrder.id}/payment/redirect`,
+      );
+    });
     expect(screen.getByLabelText("Cart item count")).toHaveTextContent("0");
   });
 
@@ -201,7 +210,7 @@ describe("CheckoutPage", () => {
     renderCheckout();
 
     await user.click(screen.getByRole("button", { name: "Fill with demo account" }));
-    await user.dblClick(screen.getByRole("button", { name: "Complete order" }));
+    await user.dblClick(screen.getByRole("button", { name: "Pay by card" }));
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(screen.getByLabelText("Cart item count")).toHaveTextContent("3");
@@ -217,7 +226,7 @@ describe("CheckoutPage", () => {
     renderCheckout();
 
     await user.click(screen.getByRole("button", { name: "Fill with demo account" }));
-    await user.click(screen.getByRole("button", { name: "Complete order" }));
+    await user.click(screen.getByRole("button", { name: "Pay by card" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "The order service could not be reached. Try again.",
@@ -225,14 +234,17 @@ describe("CheckoutPage", () => {
     expect(screen.getByLabelText("Full name")).toHaveValue(DEMO_CUSTOMER.fullName);
     expect(screen.getByLabelText("Cart item count")).toHaveTextContent("3");
 
-    await user.click(screen.getByRole("button", { name: "Complete order" }));
+    await user.click(screen.getByRole("button", { name: "Pay by card" }));
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     const firstPayload = parseRequestBody(fetchSpy.mock.calls[0]?.[1]);
     const retryPayload = parseRequestBody(fetchSpy.mock.calls[1]?.[1]);
     expect(retryPayload.idempotencyKey).toBe(firstPayload.idempotencyKey);
-    expect(
-      await screen.findByRole("heading", { name: "Demo order completed" }),
-    ).toBeInTheDocument();
+    await vi.waitFor(() => {
+      expect(assignSpy).toHaveBeenCalledWith(
+        `/api/orders/${completedOrder.id}/payment/redirect`,
+      );
+    });
+    expect(screen.getByLabelText("Cart item count")).toHaveTextContent("0");
   });
 
   it("reuses a saved attempt after remount and shows its original summary", async () => {
@@ -246,7 +258,7 @@ describe("CheckoutPage", () => {
     renderCheckout();
 
     await user.click(screen.getByRole("button", { name: "Fill with demo account" }));
-    await user.click(screen.getByRole("button", { name: "Complete order" }));
+    await user.click(screen.getByRole("button", { name: "Pay by card" }));
     const initialPayload = parseRequestBody(fetchSpy.mock.calls[0]?.[1]);
 
     await user.click(screen.getByRole("link", { name: "Leave checkout" }));
@@ -257,14 +269,16 @@ describe("CheckoutPage", () => {
     expect(
       screen.getByText(/saved order attempt being retried/i),
     ).toBeInTheDocument();
-    expect(screen.getByText("€186.95")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Complete order" }));
+    expect(screen.getByText(/Rs\s*186\.95/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Pay by card" }));
 
     const retryPayload = parseRequestBody(fetchSpy.mock.calls[1]?.[1]);
     expect(retryPayload).toEqual(initialPayload);
-    expect(
-      await screen.findByRole("heading", { name: "Demo order completed" }),
-    ).toBeInTheDocument();
+    await vi.waitFor(() => {
+      expect(assignSpy).toHaveBeenCalledWith(
+        `/api/orders/${completedOrder.id}/payment/redirect`,
+      );
+    });
     expect(screen.getByLabelText("Cart item count")).toHaveTextContent("1");
   });
 
@@ -281,7 +295,7 @@ describe("CheckoutPage", () => {
     renderCheckout();
 
     await user.click(screen.getByRole("button", { name: "Fill with demo account" }));
-    await user.click(screen.getByRole("button", { name: "Complete order" }));
+    await user.click(screen.getByRole("button", { name: "Pay by card" }));
     await user.click(screen.getByRole("link", { name: "Leave checkout" }));
     await user.click(screen.getByRole("button", { name: "Add later cart item" }));
     await user.click(screen.getByRole("button", { name: "Change submitted quantity" }));
@@ -308,13 +322,14 @@ describe("CheckoutPage", () => {
     renderCheckout();
 
     await user.click(screen.getByRole("button", { name: "Fill with demo account" }));
-    await user.click(screen.getByRole("button", { name: "Complete order" }));
+    await user.click(screen.getByRole("button", { name: "Pay by card" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "The order service returned an invalid confirmation.",
     );
     expect(screen.getByLabelText("Cart item count")).toHaveTextContent("3");
     expect(screen.queryByText("CG-DEAD1234")).not.toBeInTheDocument();
+    expect(assignSpy).not.toHaveBeenCalled();
   });
 
   it("contains no payment-entry controls or claim that the order is paid", () => {
@@ -324,7 +339,7 @@ describe("CheckoutPage", () => {
     expect(container.querySelector('input[name*="card" i]')).toBeNull();
     expect(container.querySelector('input[autocomplete^="cc-"]')).toBeNull();
     expect(screen.queryByText(/^paid$/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/does not collect or confirm payment/i)).toBeInTheDocument();
+    expect(screen.getByText(/redirected to JazzCash/i)).toBeInTheDocument();
   });
 
   it("redirects an empty fresh checkout to the cart page", async () => {

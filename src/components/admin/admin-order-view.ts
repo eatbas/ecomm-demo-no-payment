@@ -1,4 +1,4 @@
-import type { CompletedOrder } from "../../../shared/orders";
+import type { CompletedOrder, PaymentStatus } from "../../../shared/orders";
 
 import { formatCompletedAt } from "@/components/admin/admin-order-format";
 import { formatCurrency } from "@/lib/currency";
@@ -22,6 +22,7 @@ export interface AdminOrderView {
     readonly productName: string;
     readonly quantityLabel: string;
   }[];
+  readonly paymentStatus: PaymentStatus;
   readonly reference: string;
   readonly total: string;
 }
@@ -30,6 +31,7 @@ export function createAdminOrderView(order: CompletedOrder): AdminOrderView {
   return {
     id: order.id,
     reference: order.reference,
+    paymentStatus: order.paymentStatus,
     createdAt: order.createdAt,
     completedAt: `${formatCompletedAt(order.createdAt)} UTC`,
     customer: {

@@ -11,15 +11,16 @@ import {
   ORDER_CURRENCY,
   ORDER_ERROR_CODES,
   ORDER_ID_PATTERN,
-  ORDER_PAYMENT_STATUS,
   ORDER_REFERENCE_PATTERN,
   ORDER_SNAPSHOT_PRODUCT_ID_PATTERN,
   ORDER_STATUS,
   ORDER_TIMESTAMP_PATTERN,
+  PAYMENT_STATUSES,
   type AdminOrdersResponse,
   type CompletedOrder,
   type CompletedOrderItem,
   type OrderErrorResponse,
+  type PaymentStatus,
 } from "../../../shared/orders";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -118,7 +119,8 @@ export function parseCompletedOrder(value: unknown): CompletedOrder | null {
     !ORDER_REFERENCE_PATTERN.test(value.reference) ||
     !isCanonicalTimestamp(value.createdAt) ||
     value.status !== ORDER_STATUS ||
-    value.paymentStatus !== ORDER_PAYMENT_STATUS ||
+    typeof value.paymentStatus !== "string" ||
+    !PAYMENT_STATUSES.includes(value.paymentStatus as PaymentStatus) ||
     value.currency !== ORDER_CURRENCY ||
     !isNonNegativeInteger(value.subtotalCents) ||
     value.subtotalCents < 1 ||
@@ -160,12 +162,39 @@ export function parseCompletedOrder(value: unknown): CompletedOrder | null {
     reference: value.reference,
     createdAt: value.createdAt,
     status: ORDER_STATUS,
-    paymentStatus: ORDER_PAYMENT_STATUS,
+    paymentStatus: value.paymentStatus as PaymentStatus,
     currency: ORDER_CURRENCY,
     subtotalCents: value.subtotalCents,
     itemCount: value.itemCount,
     demoCustomer: DEMO_CUSTOMER,
     items: validItems,
+  };
+}
+
+export interface OrderStatusResponse {
+  readonly id: string;
+  readonly reference: string;
+  readonly paymentStatus: PaymentStatus;
+}
+
+export function parseOrderStatusResponse(value: unknown): OrderStatusResponse | null {
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, ["id", "reference", "paymentStatus"]) ||
+    typeof value.id !== "string" ||
+    !ORDER_ID_PATTERN.test(value.id) ||
+    typeof value.reference !== "string" ||
+    !ORDER_REFERENCE_PATTERN.test(value.reference) ||
+    typeof value.paymentStatus !== "string" ||
+    !PAYMENT_STATUSES.includes(value.paymentStatus as PaymentStatus)
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    reference: value.reference,
+    paymentStatus: value.paymentStatus as PaymentStatus,
   };
 }
 

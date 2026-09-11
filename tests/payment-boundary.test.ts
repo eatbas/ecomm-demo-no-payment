@@ -208,7 +208,19 @@ describe("payment boundary scanner", () => {
         export function listOrders() {
           return fetch(\`/api/admin/orders?limit=\${DEFAULT_ADMIN_ORDER_LIMIT}\`);
         }
+        export function getOrderStatus(orderId: string) {
+          return fetch(\`/api/orders/\${orderId}/status\`);
+        }
       `,
+    });
+
+    await expect(runScanner(rootDirectory)).resolves.toMatchObject({ stderr: "" });
+  });
+
+  it("allows mock remote URLs within server test fixtures", async () => {
+    const rootDirectory = await createFixture({
+      path: "server/gateway.test.ts",
+      value: 'const mockUrl = "https://example.test/gateway"; export { mockUrl };',
     });
 
     await expect(runScanner(rootDirectory)).resolves.toMatchObject({ stderr: "" });

@@ -1,8 +1,19 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it } from "vitest";
 import { buildApp } from "../app.js";
+import type { JazzCashConfig } from "../config.js";
+import { buildSecureHash } from "../payments/jazzcash/hash.js";
 
 const apps: Awaited<ReturnType<typeof buildApp>>[] = [];
+
+const testJazzCashConfig: JazzCashConfig = {
+  baseUrl: ["https:", "", "onlinepayments.jazzcash.com.pk"].join("/"),
+  merchantId: "MC990739",
+  password: "testpassword",
+  integritySalt: "testsalt12345678",
+  returnUrl: ["https:", "", "ecomm.atbas.xyz", "api", "payments", "return"].join("/"),
+  ipnUrl: ["https:", "", "ecomm.atbas.xyz", "api", "payments", "ipn"].join("/"),
+};
 
 const validRequest = {
   idempotencyKey: "00000000-0000-4000-8000-000000000301",
@@ -11,7 +22,10 @@ const validRequest = {
 };
 
 async function createTestApp(): Promise<Awaited<ReturnType<typeof buildApp>>> {
-  const app = await buildApp({ databasePath: ":memory:" });
+  const app = await buildApp({
+    databasePath: ":memory:",
+    jazzcash: testJazzCashConfig,
+  });
   apps.push(app);
   return app;
 }
@@ -43,8 +57,8 @@ describe("order routes", () => {
     expect(replayResponse.json()).toEqual(firstResponse.json());
     expect(firstResponse.json()).toMatchObject({
       status: "completed",
-      paymentStatus: "not_configured",
-      currency: "EUR",
+      paymentStatus: "awaiting_payment",
+      currency: "PKR",
       subtotalCents: 10_900,
       itemCount: 2,
       items: [
@@ -182,5 +196,167 @@ describe("order routes", () => {
       code: "NOT_FOUND",
       message: "The requested resource was not found.",
     });
+  });
+
+  it("exposes lightweight order status for polling", async () => {
+    const app = await createTestApp();
+    const missing = await app.inject({
+      method: "GET",
+      url: "/api/orders/non-existent/status",
+    });
+    expect(missing.statusCode).toBe(404);
+
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/orders",
+      payload: validRequest,
+    });
+    const order = createRes.json<{ id: string; reference: string }>();
+
+    const statusRes = await app.inject({
+      method: "GET",
+      url: `/api/orders/${order.id}/status`,
+    });
+    expect(statusRes.statusCode).toBe(200);
+    expect(statusRes.json()).toEqual({
+      id: order.id,
+      reference: order.reference,
+      paymentStatus: "awaiting_payment",
+    });
+  });
+
+  it("serves payment redirection page with CSP and initiates payment attempt", async () => {
+    const app = await createTestApp();
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/orders",
+      payload: validRequest,
+    });
+    const order = createRes.json<{ id: string; reference: string }>();
+
+    const redirectRes = await app.inject({
+      method: "GET",
+      url: `/api/orders/${order.id}/payment/redirect`,
+    });
+
+    expect(redirectRes.statusCode).toBe(200);
+    expect(redirectRes.headers["content-type"]).toContain("text/html");
+    const csp = redirectRes.headers["content-security-policy"];
+    expect(csp).toContain("form-action 'self' https://onlinepayments.jazzcash.com.pk");
+    expect(csp).toMatch(/script-src 'nonce-[A-Za-z0-9+/=]+'/);
+    expect(redirectRes.body).toContain('action="https://onlinepayments.jazzcash.com.pk/payment-orchestrator/CustomerPortal/transactionmanagement/merchantform"');
+    expect(redirectRes.body).toContain('name="pp_TxnType" value="MPAY"');
+    expect(redirectRes.body).toContain('name="pp_MerchantID" value="MC990739"');
+    expect(redirectRes.body).toContain('name="pp_SecureHash"');
+  });
+
+  it("handles customer return from JazzCash hosted checkout", async () => {
+    const app = await createTestApp();
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/orders",
+      payload: validRequest,
+    });
+    const order = createRes.json<{ id: string }>();
+
+    const redirectRes = await app.inject({
+      method: "GET",
+      url: `/api/orders/${order.id}/payment/redirect`,
+    });
+    const match = redirectRes.body.match(/name="pp_TxnRefNo" value="([^"]+)"/);
+    expect(match).not.toBeNull();
+    const txnRefNo = match?.[1] ?? "";
+
+    const returnRes = await app.inject({
+      method: "POST",
+      url: "/api/payments/return",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: `pp_TxnRefNo=${encodeURIComponent(txnRefNo)}`,
+    });
+
+    expect(returnRes.statusCode).toBe(303);
+    expect(returnRes.headers.location).toBe(`/checkout/confirmation?order=${order.id}`);
+  });
+
+  it("validates IPN notifications and transitions order status to paid", async () => {
+    const app = await createTestApp();
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/orders",
+      payload: validRequest,
+    });
+    const order = createRes.json<{ id: string; subtotalCents: number }>();
+
+    const redirectRes = await app.inject({
+      method: "GET",
+      url: `/api/orders/${order.id}/payment/redirect`,
+    });
+    const match = redirectRes.body.match(/name="pp_TxnRefNo" value="([^"]+)"/);
+    expect(match).not.toBeNull();
+    const txnRefNo = match?.[1] ?? "";
+
+    // Malformed IPN payload
+    const malformedRes = await app.inject({
+      method: "POST",
+      url: "/api/payments/ipn",
+      payload: { invalid: true },
+    });
+    expect(malformedRes.statusCode).toBe(400);
+
+    // Invalid signature
+    const badSigRes = await app.inject({
+      method: "POST",
+      url: "/api/payments/ipn",
+      payload: {
+        pp_TxnRefNo: txnRefNo,
+        pp_ResponseCode: "121",
+        pp_SecureHash: "INVALIDHASH1234",
+      },
+    });
+    expect(badSigRes.statusCode).toBe(400);
+
+    // Valid IPN payload
+    const ipnFields: Record<string, string> = {
+      pp_Amount: String(order.subtotalCents),
+      pp_ResponseCode: "121",
+      pp_ResponseMessage: "Transaction Successful",
+      pp_TxnCurrency: "PKR",
+      pp_TxnRefNo: txnRefNo,
+    };
+    const secureHash = buildSecureHash(ipnFields, testJazzCashConfig.integritySalt);
+    const validIpnPayload = { ...ipnFields, pp_SecureHash: secureHash };
+
+    const validRes = await app.inject({
+      method: "POST",
+      url: "/api/payments/ipn",
+      payload: validIpnPayload,
+    });
+
+    expect(validRes.statusCode).toBe(200);
+    expect(validRes.json()).toEqual({
+      pp_ResponseCode: "000",
+      pp_ResponseMessage: "IPN received successfully",
+    });
+
+    // Check order status has transitioned to paid
+    const statusRes = await app.inject({
+      method: "GET",
+      url: `/api/orders/${order.id}/status`,
+    });
+    expect(statusRes.statusCode).toBe(200);
+    expect(statusRes.json()).toMatchObject({
+      id: order.id,
+      paymentStatus: "paid",
+    });
+
+    // Subsequent redirect request for already paid order redirects directly to confirmation
+    const alreadyPaidRedirect = await app.inject({
+      method: "GET",
+      url: `/api/orders/${order.id}/payment/redirect`,
+    });
+    expect(alreadyPaidRedirect.statusCode).toBe(303);
+    expect(alreadyPaidRedirect.headers.location).toBe(
+      `/checkout/confirmation?order=${order.id}`,
+    );
   });
 });

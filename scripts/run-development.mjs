@@ -5,6 +5,14 @@ import { resolve } from "node:path";
 const localDataDirectory = resolve(".data");
 await mkdir(localDataDirectory, { recursive: true });
 
+try {
+  process.loadEnvFile(resolve(".env"));
+} catch (error) {
+  if (error?.code !== "ENOENT") {
+    throw error;
+  }
+}
+
 const childDefinitions = [
   {
     name: "API",

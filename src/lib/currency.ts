@@ -1,9 +1,11 @@
-export const CURRENCY = "EUR";
-export const CURRENCY_LOCALE = "en-GB";
+export const CURRENCY = "PKR";
+export const CURRENCY_LOCALE = "en-PK";
 
-const euroFormatter = new Intl.NumberFormat(CURRENCY_LOCALE, {
+const pkrFormatter = new Intl.NumberFormat(CURRENCY_LOCALE, {
   style: "currency",
   currency: CURRENCY,
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
 });
 
 export function formatCurrency(priceCents: number): string {
@@ -11,5 +13,5 @@ export function formatCurrency(priceCents: number): string {
     throw new TypeError("Price in cents must be a safe integer.");
   }
 
-  return euroFormatter.format(priceCents / 100);
+  return pkrFormatter.format(priceCents / 100);
 }

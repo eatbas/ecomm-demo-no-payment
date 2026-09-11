@@ -13,6 +13,14 @@ const migrations: readonly Migration[] = [
     name: "create-orders",
     source: new URL("./migrations/001-create-orders.sql", import.meta.url),
   },
+  {
+    version: 2,
+    name: "add-payment-lifecycle",
+    source: new URL(
+      "./migrations/002-add-payment-lifecycle.sql",
+      import.meta.url,
+    ),
+  },
 ];
 
 interface AppliedMigrationRow {

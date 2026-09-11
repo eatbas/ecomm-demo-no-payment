@@ -1,8 +1,15 @@
 import type { ProductId } from "./catalogue.js";
 
-export const ORDER_CURRENCY = "EUR" as const;
+export const ORDER_CURRENCY = "PKR" as const;
 export const ORDER_STATUS = "completed" as const;
-export const ORDER_PAYMENT_STATUS = "not_configured" as const;
+export const PAYMENT_STATUSES = [
+  "awaiting_payment",
+  "paid",
+  "failed",
+  "ambiguous",
+] as const;
+export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
+export const ORDER_PAYMENT_STATUS = "awaiting_payment" as const;
 export const MAX_ORDER_LINES = 3;
 export const MAX_ORDER_QUANTITY = 99;
 export const MAX_ORDER_UNIT_PRICE_CENTS = 100_000_000;
@@ -70,7 +77,7 @@ export interface CompletedOrder {
   readonly reference: string;
   readonly createdAt: string;
   readonly status: typeof ORDER_STATUS;
-  readonly paymentStatus: typeof ORDER_PAYMENT_STATUS;
+  readonly paymentStatus: PaymentStatus;
   readonly currency: typeof ORDER_CURRENCY;
   readonly subtotalCents: number;
   readonly itemCount: number;

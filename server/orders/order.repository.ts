@@ -6,9 +6,11 @@ import {
   ORDER_PAYMENT_STATUS,
   ORDER_SNAPSHOT_PRODUCT_ID_PATTERN,
   ORDER_STATUS,
+  PAYMENT_STATUSES,
   type CompletedOrder,
   type CompletedOrderItem,
   type OrderSnapshotProductId,
+  type PaymentStatus,
 } from "../../shared/orders.js";
 
 export interface OrderToPersist {
@@ -41,9 +43,9 @@ class DataIntegrityError extends Error {
   }
 }
 
-type DatabaseRow = Record<string, SQLOutputValue>;
+export type DatabaseRow = Record<string, SQLOutputValue>;
 
-function readString(row: DatabaseRow, column: string): string {
+export function readString(row: DatabaseRow, column: string): string {
   const value = row[column];
   if (typeof value !== "string") {
     throw new DataIntegrityError(`Expected ${column} to contain text.`);
@@ -51,7 +53,21 @@ function readString(row: DatabaseRow, column: string): string {
   return value;
 }
 
-function readInteger(row: DatabaseRow, column: string): number {
+export function readNullableString(
+  row: DatabaseRow,
+  column: string,
+): string | null {
+  const value = row[column];
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value !== "string") {
+    throw new DataIntegrityError(`Expected ${column} to contain text or null.`);
+  }
+  return value;
+}
+
+export function readInteger(row: DatabaseRow, column: string): number {
   const value = row[column];
   if (typeof value !== "number" || !Number.isSafeInteger(value)) {
     throw new DataIntegrityError(`Expected ${column} to contain an integer.`);
@@ -97,6 +113,10 @@ export class OrderRepository {
     this.#database = database;
   }
 
+  get database(): DatabaseSync {
+    return this.#database;
+  }
+
   get isReady(): boolean {
     return this.#database.isOpen;
   }
@@ -105,6 +125,13 @@ export class OrderRepository {
     if (this.#database.isOpen) {
       this.#database.close();
     }
+  }
+
+  findById(orderId: string): CompletedOrder | undefined {
+    const row = this.#database
+      .prepare("SELECT id FROM orders WHERE id = ?")
+      .get(orderId);
+    return row === undefined ? undefined : this.readOrder(orderId);
   }
 
   createOrReplay(order: OrderToPersist): PersistOrderResult {
@@ -150,6 +177,15 @@ export class OrderRepository {
       .all(ORDER_STATUS, limit) as unknown as DatabaseRow[];
 
     return orderRows.map((row) => this.readOrder(readString(row, "id")));
+  }
+
+  setPaymentStatus(orderId: string, paymentStatus: PaymentStatus): void {
+    const result = this.#database
+      .prepare("UPDATE orders SET payment_status = ? WHERE id = ?")
+      .run(paymentStatus, orderId);
+    if (result.changes === 0) {
+      throw new DataIntegrityError(`Order ${orderId} could not be updated.`);
+    }
   }
 
   private insertOrder(order: OrderToPersist): void {
@@ -217,8 +253,12 @@ export class OrderRepository {
 
     assertLiteral(orderRow, "demoCustomerId", DEMO_CUSTOMER.id);
     assertLiteral(orderRow, "status", ORDER_STATUS);
-    assertLiteral(orderRow, "paymentStatus", ORDER_PAYMENT_STATUS);
     assertLiteral(orderRow, "currency", ORDER_CURRENCY);
+
+    const paymentStatus = readString(orderRow, "paymentStatus");
+    if (!(PAYMENT_STATUSES as readonly string[]).includes(paymentStatus)) {
+      throw new DataIntegrityError("The stored paymentStatus value is invalid.");
+    }
 
     const itemRows = this.#database
       .prepare(
@@ -239,7 +279,7 @@ export class OrderRepository {
       reference: readString(orderRow, "reference"),
       createdAt: readString(orderRow, "createdAt"),
       status: ORDER_STATUS,
-      paymentStatus: ORDER_PAYMENT_STATUS,
+      paymentStatus: paymentStatus as PaymentStatus,
       currency: ORDER_CURRENCY,
       subtotalCents: readInteger(orderRow, "subtotalCents"),
       itemCount: readInteger(orderRow, "itemCount"),

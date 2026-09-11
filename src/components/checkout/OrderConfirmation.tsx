@@ -17,16 +17,33 @@ interface OrderConfirmationProps {
 }
 
 export function OrderConfirmation({ order }: OrderConfirmationProps) {
+  const isPaid = order.paymentStatus === "paid";
+  const isFailed = order.paymentStatus === "failed";
+  const paymentBadgeLabel =
+    order.paymentStatus === "paid"
+      ? "Paid"
+      : order.paymentStatus === "failed"
+        ? "Payment failed"
+        : order.paymentStatus === "ambiguous"
+          ? "Payment pending"
+          : "Awaiting payment";
+
   return (
     <Card className="mt-8">
       <CardHeader>
         <div className="flex flex-wrap items-center gap-2">
           <Badge>Completed</Badge>
-          <Badge variant="outline">Payment not configured</Badge>
+          <Badge variant={isPaid ? "default" : isFailed ? "destructive" : "outline"}>
+            {paymentBadgeLabel}
+          </Badge>
         </div>
-        <CardTitle level={2}>Demo order completed</CardTitle>
+        <CardTitle level={2}>
+          {isPaid ? "Order confirmed and paid" : "Demo order completed"}
+        </CardTitle>
         <p className="text-sm leading-6 text-muted-foreground">
-          The order was saved. No payment was collected or confirmed.
+          {isPaid
+            ? "Your card payment was successfully processed via JazzCash."
+            : "Your order was saved and is awaiting payment confirmation."}
         </p>
       </CardHeader>
       <CardContent>

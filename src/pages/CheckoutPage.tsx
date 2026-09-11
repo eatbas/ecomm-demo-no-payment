@@ -18,6 +18,7 @@ import {
   type OrderAttempt,
 } from "@/features/orders/order.attempt";
 import { createOrderIdempotencyKey } from "@/features/orders/order.idempotency";
+import { navigation } from "@/lib/navigation";
 import {
   DEMO_CUSTOMER,
   type CompletedOrder,
@@ -36,7 +37,7 @@ export function CheckoutPage() {
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [confirmation, setConfirmation] =
+  const [confirmation] =
     useState<CompletedOrder | null>(loadOrderCompletion);
   const isRequestPending = useRef(false);
   const isMounted = useRef(true);
@@ -109,14 +110,11 @@ export function CheckoutPage() {
     void createOrder(request)
       .then((order) => {
         const wasCurrentAttempt = clearOrderAttempt(request.idempotencyKey);
-        if (isMounted.current) {
-          clearOrderCompletion();
-          setAttempt(null);
-          setConfirmation(order);
-        } else if (wasCurrentAttempt) {
+        if (!isMounted.current && wasCurrentAttempt) {
           saveOrderCompletion(order);
         }
         removeCompletedLines(request.lines);
+        navigation.assign(`/api/orders/${order.id}/payment/redirect`);
       })
       .catch((error: unknown) => {
         if (isMounted.current) {

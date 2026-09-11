@@ -30,7 +30,7 @@ export function AdminOrderCard({ order }: AdminOrderCardProps) {
       </div>
 
       <div className="min-w-0 space-y-6 p-4">
-        <AdminOrderStatus />
+        <AdminOrderStatus paymentStatus={view.paymentStatus} />
 
         <section aria-labelledby={`${headingId}-account`}>
           <h3 id={`${headingId}-account`} className="text-sm font-bold text-primary">

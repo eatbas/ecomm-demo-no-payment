@@ -5,6 +5,7 @@ const config = readServerConfig();
 const app = await buildApp({
   databasePath: config.databasePath,
   staticRoot: config.staticRoot,
+  jazzcash: config.jazzcash,
   logger: true,
 });
 

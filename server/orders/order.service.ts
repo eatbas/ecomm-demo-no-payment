@@ -139,6 +139,10 @@ export class OrderService {
     });
   }
 
+  findById(orderId: string): CompletedOrder | undefined {
+    return this.#repository.findById(orderId);
+  }
+
   listCompleted(limit: number): readonly CompletedOrder[] {
     return this.#repository.listCompleted(limit);
   }

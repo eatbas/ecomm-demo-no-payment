@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DEMO_CUSTOMER } from "../shared/orders";
 import { App } from "@/app/App";
+import { navigation } from "@/lib/navigation";
 import {
   createCompletedOrder,
   createCompletedOrderItem,
@@ -38,6 +39,7 @@ function parseRequestBody(requestInit: RequestInit | undefined): unknown {
 
 describe("customer shopping flow", () => {
   it("saves a fixed demo order before clearing the cart", async () => {
+    const assignSpy = vi.spyOn(navigation, "assign").mockImplementation(() => {});
     const fetchSpy = vi
       .fn<typeof fetch>()
       .mockResolvedValue(createJsonResponse(completedOrder, 201));
@@ -65,16 +67,17 @@ describe("customer shopping flow", () => {
     expect(
       screen.queryByText("This is a public demo."),
     ).not.toBeInTheDocument();
-    expect(screen.getByText("€186.95")).toBeInTheDocument();
+    expect(screen.getByText(/Rs\s*186\.95/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Fill with demo account" }));
     expect(screen.getByLabelText("Email address")).toHaveValue(DEMO_CUSTOMER.email);
-    await user.click(screen.getByRole("button", { name: "Complete order" }));
+    await user.click(screen.getByRole("button", { name: "Pay by card" }));
 
-    expect(
-      await screen.findByRole("heading", { name: "Demo order completed" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("CG-FEED1234")).toBeInTheDocument();
+    await vi.waitFor(() => {
+      expect(assignSpy).toHaveBeenCalledWith(
+        `/api/orders/${completedOrder.id}/payment/redirect`,
+      );
+    });
     expect(screen.getByRole("link", { name: "Cart, 0 items" })).toBeInTheDocument();
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(parseRequestBody(fetchSpy.mock.calls[0]?.[1])).toMatchObject({

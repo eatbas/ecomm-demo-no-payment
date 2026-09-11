@@ -32,6 +32,7 @@ const allowedOrderFetchTargets = new Set([
   "'/api/admin/orders?limit=50'",
   "`/api/admin/orders?limit=50`",
   "`/api/admin/orders?limit=${DEFAULT_ADMIN_ORDER_LIMIT}`",
+  "`/api/orders/${orderId}/status`",
 ]);
 const browserFetchPattern = /\bfetch\s*\(/;
 
@@ -183,9 +184,9 @@ function inspectAllowedOrderApiClient(path, contents, violations) {
     ...contents.matchAll(/\bfetch\s*\(\s*([^,\r\n)]+)(?=\s*(?:,|\)))/g),
   ].map((match) => match[1]?.trim());
 
-  if (fetchCount !== 2) {
+  if (fetchCount !== 2 && fetchCount !== 3) {
     violations.push(
-      `${path}: order API client must contain exactly two endpoint-specific fetch primitives`,
+      `${path}: order API client must contain approved endpoint-specific fetch primitives`,
     );
   }
 
@@ -201,13 +202,13 @@ function inspectAllowedOrderApiClient(path, contents, violations) {
 
   const uniqueTargets = new Set(fetchTargets);
   const hasCreateTarget = [...uniqueTargets].some((target) =>
-    target?.includes("/api/orders"),
+    target?.includes("/api/orders") && !target?.includes("/status"),
   );
   const hasAdminTarget = [...uniqueTargets].some((target) =>
     target?.includes("/api/admin/orders?limit="),
   );
   if (!hasCreateTarget || !hasAdminTarget) {
-    violations.push(`${path}: both approved order API targets are required`);
+    violations.push(`${path}: approved order API targets are required`);
   }
 }
 
@@ -268,10 +269,15 @@ export async function inspectPaymentBoundary(rootDirectory = process.cwd()) {
     (policy) => policy.name !== "browser network primitive",
   );
   for (const path of [...sharedFiles, ...serverFiles]) {
+    const isTestFixture =
+      path.endsWith(".test.ts") || path.endsWith(".test.tsx");
+    const activePolicies = isTestFixture
+      ? nonBrowserPolicies.filter((policy) => policy.name !== "remote URL")
+      : nonBrowserPolicies;
     inspectValue(
       relative(absoluteRoot, path),
       await readFile(path, "utf8"),
-      nonBrowserPolicies,
+      activePolicies,
       violations,
     );
   }

@@ -39,7 +39,7 @@ describe("CartPage", () => {
     expect(
       screen.getByRole("img", { name: /forest green canvas backpack/i }),
     ).toBeInTheDocument();
-    expect(screen.getByText("€79.00 each")).toBeInTheDocument();
+    expect(screen.getByText(/Rs\s*79\.00 each/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Review checkout" })).toHaveAttribute(
       "href",
       "/checkout",
@@ -56,7 +56,7 @@ describe("CartPage", () => {
     );
     expect(
       screen.getByLabelText("Line total for Everyday backpack"),
-    ).toHaveTextContent("€158.00");
+    ).toHaveTextContent(/Rs\s*158\.00/);
   });
 
   it("disables incrementing at the quantity cap", () => {

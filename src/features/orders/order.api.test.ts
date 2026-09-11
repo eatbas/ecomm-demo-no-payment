@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   createOrder,
+  getOrderStatus,
   listCompletedOrders,
   OrderApiError,
 } from "@/features/orders/order.api";
@@ -72,6 +73,24 @@ describe("order API client", () => {
     );
     await expect(listCompletedOrders()).rejects.toThrow(
       "The order service rejected the request.",
+    );
+  });
+
+  it("gets the order status for an order", async () => {
+    const statusPayload = {
+      id: validOrder.id,
+      reference: validOrder.reference,
+      paymentStatus: "paid" as const,
+    };
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValue(createJsonResponse(statusPayload));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await expect(getOrderStatus(validOrder.id)).resolves.toEqual(statusPayload);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      `/api/orders/${validOrder.id}/status`,
+      expect.any(Object),
     );
   });
 });
