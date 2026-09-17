@@ -138,7 +138,7 @@ describe("AdminPage", () => {
       "fetch",
       vi.fn().mockResolvedValue(
         createJsonResponse({
-          orders: [{ ...completedOrder, paymentStatus: "paid" }],
+          orders: [{ ...completedOrder, paymentStatus: "unsupported_status" }],
         }),
       ),
     );
@@ -149,7 +149,49 @@ describe("AdminPage", () => {
       "invalid order list",
     );
     expect(screen.queryByText("CG-ABC12345")).toBeNull();
-    expect(screen.queryByText("paid")).toBeNull();
+    expect(screen.queryByText("unsupported_status")).toBeNull();
+  });
+
+  it("renders transaction details and gateway status when present", async () => {
+    const orderWithTransaction = createCompletedOrder({
+      reference: "CG-FA01B2C3",
+      createdAt: "2026-08-25T14:00:00.000Z",
+      status: "completed",
+      paymentStatus: "paid",
+      currency: "PKR",
+      transaction: {
+        txnRefNo: "T20260825140000000001",
+        txnType: "MPAY",
+        amountPaisa: 1580000,
+        currency: "PKR",
+        status: "paid",
+        responseCode: "121",
+        responseMessage: "Transaction Successful",
+        retrievalRefNo: "RRN998877",
+        authCode: "AUTH42",
+        txnDatetime: "20260825140000",
+      },
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        createJsonResponse({ orders: [orderWithTransaction] }),
+      ),
+    );
+
+    renderAdminPage();
+
+    const table = await screen.findByRole("table", {
+      name: "Completed demo orders",
+    });
+    expect(within(table).getByText("CG-FA01B2C3")).toBeInTheDocument();
+    expect(within(table).getByText("Ref: T20260825140000000001")).toBeInTheDocument();
+    expect(within(table).getByText("RRN: RRN998877")).toBeInTheDocument();
+    expect(within(table).getByText("Auth: AUTH42")).toBeInTheDocument();
+    expect(within(table).getByText("Transaction Successful")).toBeInTheDocument();
+    expect(screen.getAllByText("Paid")).not.toHaveLength(0);
+    expect(screen.getAllByText("Card (MPAY)")).not.toHaveLength(0);
   });
 
   it("aborts loading on unmount", () => {

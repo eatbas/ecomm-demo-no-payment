@@ -5,11 +5,13 @@ import Fastify, {
   type FastifyServerOptions,
 } from "fastify";
 import { extname } from "node:path";
+import type { JazzCashConfig } from "./config.js";
 import { openOrderDatabase } from "./db/database.js";
 import { IdempotencyConflictError, OrderRepository } from "./orders/order.repository.js";
 import { OrderService, OrderValidationError } from "./orders/order.service.js";
 import { registerAdminOrderRoutes } from "./routes/admin-orders.js";
 import { registerOrderRoutes } from "./routes/orders.js";
+import { registerPaymentRoutes } from "./routes/payments.js";
 
 const API_BODY_LIMIT_BYTES = 16 * 1024;
 const HASHED_ASSET_PATH = /[/\\]assets[/\\].+-[A-Za-z0-9_-]{8,}\.[^/\\]+$/;
@@ -18,7 +20,7 @@ const CONTENT_SECURITY_POLICY = [
   "base-uri 'none'",
   "connect-src 'self'",
   "font-src 'self'",
-  "form-action 'none'",
+  "form-action 'self' https://onlinepayments.jazzcash.com.pk",
   "frame-ancestors 'none'",
   "img-src 'self'",
   "manifest-src 'self'",
@@ -31,6 +33,7 @@ export interface BuildAppOptions {
   readonly databasePath: string;
   readonly staticRoot?: string;
   readonly logger?: FastifyServerOptions["logger"];
+  readonly jazzcash?: JazzCashConfig;
 }
 
 function setSecurityHeaders(reply: {
@@ -113,8 +116,23 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       return reply.type("text/plain").send("ok\n");
     });
 
+    app.addContentTypeParser(
+      "application/x-www-form-urlencoded",
+      { parseAs: "string" },
+      (_request, body, done) => {
+        try {
+          const content = typeof body === "string" ? body : body.toString("utf8");
+          const parsed = Object.fromEntries(new URLSearchParams(content));
+          done(null, parsed);
+        } catch (error) {
+          done(error as Error, undefined);
+        }
+      },
+    );
+
     registerOrderRoutes(app, service);
     registerAdminOrderRoutes(app, service);
+    registerPaymentRoutes(app, service, options.jazzcash);
 
     if (options.staticRoot !== undefined) {
       await app.register(staticPlugin, {

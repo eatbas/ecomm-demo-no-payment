@@ -1,11 +1,17 @@
+import { existsSync } from "node:fs";
 import { buildApp } from "./app.js";
 import { readServerConfig } from "./config.js";
+
+if (existsSync(".env") && typeof process.loadEnvFile === "function") {
+  process.loadEnvFile(".env");
+}
 
 const config = readServerConfig();
 const app = await buildApp({
   databasePath: config.databasePath,
   staticRoot: config.staticRoot,
   logger: true,
+  jazzcash: config.jazzcash,
 });
 
 let shuttingDown = false;

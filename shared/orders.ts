@@ -1,5 +1,19 @@
 import type { ProductId } from "./catalogue.js";
 
+export const ORDER_STATUSES = ["pending", "completed", "failed"] as const;
+export type OrderStatus = (typeof ORDER_STATUSES)[number];
+
+export const ORDER_PAYMENT_STATUSES = [
+  "pending",
+  "paid",
+  "failed",
+  "not_configured",
+] as const;
+export type OrderPaymentStatus = (typeof ORDER_PAYMENT_STATUSES)[number];
+
+export const ORDER_CURRENCIES = ["EUR", "PKR"] as const;
+export type OrderCurrency = (typeof ORDER_CURRENCIES)[number];
+
 export const ORDER_CURRENCY = "EUR" as const;
 export const ORDER_STATUS = "completed" as const;
 export const ORDER_PAYMENT_STATUS = "not_configured" as const;
@@ -55,6 +69,7 @@ export interface CreateOrderRequest {
   readonly idempotencyKey: string;
   readonly demoCustomerId: DemoCustomerId;
   readonly lines: readonly CreateOrderLine[];
+  readonly paymentMethod?: "jazzcash" | "none";
 }
 
 export interface CompletedOrderItem {
@@ -65,17 +80,32 @@ export interface CompletedOrderItem {
   readonly lineTotalCents: number;
 }
 
+export interface OrderTransactionDetails {
+  readonly txnRefNo: string;
+  readonly txnType: string;
+  readonly amountPaisa: number;
+  readonly currency: "PKR";
+  readonly status: "initiated" | "pending" | "paid" | "failed";
+  readonly responseCode?: string;
+  readonly responseMessage?: string;
+  readonly retrievalRefNo?: string;
+  readonly authCode?: string;
+  readonly txnDatetime?: string;
+}
+
 export interface CompletedOrder {
   readonly id: string;
   readonly reference: string;
   readonly createdAt: string;
-  readonly status: typeof ORDER_STATUS;
-  readonly paymentStatus: typeof ORDER_PAYMENT_STATUS;
-  readonly currency: typeof ORDER_CURRENCY;
+  readonly status: OrderStatus;
+  readonly paymentStatus: OrderPaymentStatus;
+  readonly currency: OrderCurrency;
   readonly subtotalCents: number;
   readonly itemCount: number;
   readonly demoCustomer: typeof DEMO_CUSTOMER;
   readonly items: readonly CompletedOrderItem[];
+  readonly transaction?: OrderTransactionDetails;
+  readonly paymentRedirectUrl?: string;
 }
 
 export interface AdminOrdersResponse {

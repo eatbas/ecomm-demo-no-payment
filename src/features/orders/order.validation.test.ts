@@ -138,4 +138,29 @@ describe("order response validation", () => {
       }),
     ).toBeNull();
   });
+
+  it("accepts an order with transaction details and paymentRedirectUrl", () => {
+    const orderWithTxn = {
+      ...validOrder,
+      status: "completed" as const,
+      paymentStatus: "paid" as const,
+      currency: "PKR" as const,
+      paymentRedirectUrl: "/api/payments/redirect/ord_123",
+      transaction: {
+        txnRefNo: "T20260825120000000001",
+        txnType: "MPAY",
+        amountPaisa: 1580000,
+        currency: "PKR" as const,
+        status: "paid" as const,
+        responseCode: "121",
+        responseMessage: "Transaction Successful",
+        retrievalRefNo: "RRN123456789",
+        authCode: "AUTH99",
+        txnDatetime: "20260825120000",
+      },
+    };
+
+    expect(parseCompletedOrder(orderWithTxn)).toEqual(orderWithTxn);
+  });
 });
+

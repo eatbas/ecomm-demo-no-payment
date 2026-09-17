@@ -74,18 +74,26 @@ describe("order database", () => {
     const database = openOrderDatabase(createDatabasePath());
     runMigrations(database);
 
-    const migration = database
-      .prepare("SELECT version, name FROM schema_migrations")
-      .get() as { version: number; name: string };
+    const migrations = database
+      .prepare("SELECT version, name FROM schema_migrations ORDER BY version")
+      .all() as { version: number; name: string }[];
     const tables = database
       .prepare(
         "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name",
       )
       .all() as unknown as { name: string }[];
 
-    expect(migration).toEqual({ version: 1, name: "create-orders" });
+    expect(migrations).toEqual([
+      { version: 1, name: "create-orders" },
+      { version: 2, name: "add-jazzcash-payment" },
+    ]);
     expect(tables.map((table) => table.name)).toEqual(
-      expect.arrayContaining(["orders", "order_items", "schema_migrations"]),
+      expect.arrayContaining([
+        "orders",
+        "order_items",
+        "payment_transactions",
+        "schema_migrations",
+      ]),
     );
     database.close();
   });
@@ -100,7 +108,7 @@ describe("order database", () => {
       .prepare("SELECT COUNT(*) AS count FROM schema_migrations")
       .get() as { count: number };
 
-    expect(migrationCount.count).toBe(1);
+    expect(migrationCount.count).toBe(2);
     secondConnection.close();
   });
 
@@ -126,18 +134,18 @@ describe("order database", () => {
         applied_at TEXT NOT NULL
       ) STRICT;
       INSERT INTO schema_migrations (version, name, applied_at)
-      VALUES (2, 'future-schema', '2026-08-25T00:00:00.000Z');
+      VALUES (3, 'future-schema', '2026-08-25T00:00:00.000Z');
     `);
 
     expect(() => runMigrations(database)).toThrow(
-      "Database migration 2 is newer than this application supports.",
+      "Database migration 3 is newer than this application supports.",
     );
     expect(database.isTransaction).toBe(false);
     expect(
       database
         .prepare("SELECT version, name FROM schema_migrations")
         .all(),
-    ).toEqual([{ version: 2, name: "future-schema" }]);
+    ).toEqual([{ version: 3, name: "future-schema" }]);
     expect(
       database
         .prepare("SELECT name FROM sqlite_master WHERE name = 'orders'")
@@ -200,9 +208,12 @@ describe("order database", () => {
       const database = openOrderDatabase(databasePath);
       expect(
         database
-          .prepare("SELECT version, name FROM schema_migrations")
+          .prepare("SELECT version, name FROM schema_migrations ORDER BY version")
           .all(),
-      ).toEqual([{ version: 1, name: "create-orders" }]);
+      ).toEqual([
+        { version: 1, name: "create-orders" },
+        { version: 2, name: "add-jazzcash-payment" },
+      ]);
       database.close();
     },
     15_000,

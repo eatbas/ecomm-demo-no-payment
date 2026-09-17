@@ -8,18 +8,19 @@ import {
   MAX_ORDER_SNAPSHOT_PRODUCT_ID_LENGTH,
   MAX_ORDER_SUBTOTAL_CENTS,
   MAX_ORDER_UNIT_PRICE_CENTS,
-  ORDER_CURRENCY,
   ORDER_ERROR_CODES,
   ORDER_ID_PATTERN,
-  ORDER_PAYMENT_STATUS,
   ORDER_REFERENCE_PATTERN,
   ORDER_SNAPSHOT_PRODUCT_ID_PATTERN,
-  ORDER_STATUS,
   ORDER_TIMESTAMP_PATTERN,
   type AdminOrdersResponse,
   type CompletedOrder,
   type CompletedOrderItem,
+  type OrderCurrency,
   type OrderErrorResponse,
+  type OrderPaymentStatus,
+  type OrderStatus,
+  type OrderTransactionDetails,
 } from "../../../shared/orders";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -97,29 +98,120 @@ function hasExpectedDemoCustomer(value: unknown): boolean {
   );
 }
 
-export function parseCompletedOrder(value: unknown): CompletedOrder | null {
+function parseOrderTransaction(value: unknown): OrderTransactionDetails | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const allowedTransactionKeys = [
+    "txnRefNo",
+    "txnType",
+    "amountPaisa",
+    "currency",
+    "status",
+    "responseCode",
+    "responseMessage",
+    "retrievalRefNo",
+    "authCode",
+    "txnDatetime",
+  ];
+
+  if (!Object.keys(value).every((k) => allowedTransactionKeys.includes(k))) {
+    return null;
+  }
+
   if (
-    !isRecord(value) ||
-    !hasOnlyKeys(value, [
-      "id",
-      "reference",
-      "createdAt",
-      "status",
-      "paymentStatus",
-      "currency",
-      "subtotalCents",
-      "itemCount",
-      "demoCustomer",
-      "items",
-    ]) ||
+    typeof value.txnRefNo !== "string" ||
+    value.txnRefNo.length === 0 ||
+    typeof value.txnType !== "string" ||
+    value.txnType.length === 0 ||
+    !isNonNegativeInteger(value.amountPaisa) ||
+    value.currency !== "PKR" ||
+    !["initiated", "pending", "paid", "failed"].includes(value.status as string)
+  ) {
+    return null;
+  }
+
+  if (value.responseCode !== undefined && typeof value.responseCode !== "string") {
+    return null;
+  }
+  if (value.responseMessage !== undefined && typeof value.responseMessage !== "string") {
+    return null;
+  }
+  if (value.retrievalRefNo !== undefined && typeof value.retrievalRefNo !== "string") {
+    return null;
+  }
+  if (value.authCode !== undefined && typeof value.authCode !== "string") {
+    return null;
+  }
+  if (value.txnDatetime !== undefined && typeof value.txnDatetime !== "string") {
+    return null;
+  }
+
+  return {
+    txnRefNo: value.txnRefNo,
+    txnType: value.txnType,
+    amountPaisa: value.amountPaisa,
+    currency: "PKR",
+    status: value.status as OrderTransactionDetails["status"],
+    responseCode: value.responseCode,
+    responseMessage: value.responseMessage,
+    retrievalRefNo: value.retrievalRefNo,
+    authCode: value.authCode,
+    txnDatetime: value.txnDatetime,
+  };
+}
+
+const REQUIRED_ORDER_KEYS = [
+  "id",
+  "reference",
+  "createdAt",
+  "status",
+  "paymentStatus",
+  "currency",
+  "subtotalCents",
+  "itemCount",
+  "demoCustomer",
+  "items",
+] as const;
+
+const OPTIONAL_ORDER_KEYS = ["transaction", "paymentRedirectUrl"] as const;
+
+const VALID_ORDER_STATUSES: readonly string[] = ["pending", "completed", "failed"];
+const VALID_PAYMENT_STATUSES: readonly string[] = [
+  "pending",
+  "paid",
+  "failed",
+  "not_configured",
+];
+const VALID_CURRENCIES: readonly string[] = ["EUR", "PKR"];
+
+export function parseCompletedOrder(value: unknown): CompletedOrder | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const actualKeys = Object.keys(value);
+  const hasAllRequired = REQUIRED_ORDER_KEYS.every((key) =>
+    actualKeys.includes(key),
+  );
+  const hasNoExtraneous = actualKeys.every(
+    (key) =>
+      REQUIRED_ORDER_KEYS.includes(key as (typeof REQUIRED_ORDER_KEYS)[number]) ||
+      OPTIONAL_ORDER_KEYS.includes(key as (typeof OPTIONAL_ORDER_KEYS)[number]),
+  );
+
+  if (
+    !hasAllRequired ||
+    !hasNoExtraneous ||
     typeof value.id !== "string" ||
     !ORDER_ID_PATTERN.test(value.id) ||
     typeof value.reference !== "string" ||
     !ORDER_REFERENCE_PATTERN.test(value.reference) ||
     !isCanonicalTimestamp(value.createdAt) ||
-    value.status !== ORDER_STATUS ||
-    value.paymentStatus !== ORDER_PAYMENT_STATUS ||
-    value.currency !== ORDER_CURRENCY ||
+    !VALID_ORDER_STATUSES.includes(value.status as string) ||
+    !VALID_PAYMENT_STATUSES.includes(value.paymentStatus as string) ||
+    !VALID_CURRENCIES.includes(value.currency as string) ||
     !isNonNegativeInteger(value.subtotalCents) ||
     value.subtotalCents < 1 ||
     value.subtotalCents > MAX_ORDER_SUBTOTAL_CENTS ||
@@ -132,6 +224,26 @@ export function parseCompletedOrder(value: unknown): CompletedOrder | null {
     value.items.length > MAX_ORDER_LINES
   ) {
     return null;
+  }
+
+  let transaction: OrderTransactionDetails | undefined;
+  if (value.transaction !== undefined) {
+    const parsedTxn = parseOrderTransaction(value.transaction);
+    if (parsedTxn === null) {
+      return null;
+    }
+    transaction = parsedTxn;
+  }
+
+  let paymentRedirectUrl: string | undefined;
+  if (value.paymentRedirectUrl !== undefined) {
+    if (
+      typeof value.paymentRedirectUrl !== "string" ||
+      !value.paymentRedirectUrl.startsWith("/api/payments/")
+    ) {
+      return null;
+    }
+    paymentRedirectUrl = value.paymentRedirectUrl;
   }
 
   const items = value.items.map(parseOrderItem);
@@ -159,13 +271,15 @@ export function parseCompletedOrder(value: unknown): CompletedOrder | null {
     id: value.id,
     reference: value.reference,
     createdAt: value.createdAt,
-    status: ORDER_STATUS,
-    paymentStatus: ORDER_PAYMENT_STATUS,
-    currency: ORDER_CURRENCY,
+    status: value.status as OrderStatus,
+    paymentStatus: value.paymentStatus as OrderPaymentStatus,
+    currency: value.currency as OrderCurrency,
     subtotalCents: value.subtotalCents,
     itemCount: value.itemCount,
     demoCustomer: DEMO_CUSTOMER,
     items: validItems,
+    ...(transaction !== undefined ? { transaction } : {}),
+    ...(paymentRedirectUrl !== undefined ? { paymentRedirectUrl } : {}),
   };
 }
 

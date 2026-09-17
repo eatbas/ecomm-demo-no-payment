@@ -48,6 +48,31 @@ export function AdminOrderTable({ orders }: AdminOrderTableProps) {
                     >
                       {view.completedAt}
                     </time>
+                    {view.transaction !== undefined ? (
+                      <div className="mt-2.5 rounded-lg border border-border/80 bg-muted/40 p-2.5 text-xs text-muted-foreground">
+                        <div className="font-semibold text-foreground">
+                          Transaction
+                        </div>
+                        <div className="mt-1 font-mono text-[11px] text-foreground">
+                          Ref: {view.transaction.txnRefNo}
+                        </div>
+                        {view.transaction.retrievalRefNo !== undefined ? (
+                          <div className="mt-0.5 font-mono text-[11px]">
+                            RRN: {view.transaction.retrievalRefNo}
+                          </div>
+                        ) : null}
+                        {view.transaction.authCode !== undefined ? (
+                          <div className="mt-0.5 font-mono text-[11px]">
+                            Auth: {view.transaction.authCode}
+                          </div>
+                        ) : null}
+                        {view.transaction.responseMessage !== undefined ? (
+                          <div className="mt-0.5 text-[11px] text-foreground">
+                            {view.transaction.responseMessage}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </th>
                   <td className="max-w-56 px-5 py-5">
                     <AdminDemoAccount customer={view.customer} />
@@ -70,7 +95,11 @@ export function AdminOrderTable({ orders }: AdminOrderTableProps) {
                     </p>
                   </td>
                   <td className="px-5 py-5">
-                    <AdminOrderStatus />
+                    <AdminOrderStatus
+                      status={view.status}
+                      paymentStatus={view.paymentStatus}
+                      instrument={view.transaction?.txnType}
+                    />
                   </td>
                   <td className="whitespace-nowrap px-5 py-5 text-right text-base font-bold tabular-nums">
                     {view.total}

@@ -135,7 +135,9 @@ describe("CheckoutPage", () => {
     const user = userEvent.setup();
     renderCheckout();
 
-    await user.click(screen.getByRole("button", { name: "Complete order" }));
+    await user.click(
+      screen.getByRole("button", { name: "Proceed to JazzCash Payment" }),
+    );
 
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Fill the fixed demo account before completing the order.",
@@ -155,10 +157,14 @@ describe("CheckoutPage", () => {
     renderCheckout();
 
     await user.click(screen.getByRole("button", { name: "Fill with demo account" }));
-    await user.click(screen.getByRole("button", { name: "Complete order" }));
+    await user.click(
+      screen.getByRole("button", { name: "Proceed to JazzCash Payment" }),
+    );
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("button", { name: "Completing order…" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Redirecting to JazzCash…" }),
+    ).toBeDisabled();
     expect(screen.getByRole("button", { name: "Fill with demo account" })).toBeDisabled();
     expect(screen.getByLabelText("Cart item count")).toHaveTextContent("3");
 
@@ -180,6 +186,7 @@ describe("CheckoutPage", () => {
         { productId: "everyday-backpack", quantity: 2 },
         { productId: "travel-mug", quantity: 1 },
       ],
+      paymentMethod: "jazzcash",
     });
 
     resolveRequest?.(successfulResponse());
@@ -201,7 +208,9 @@ describe("CheckoutPage", () => {
     renderCheckout();
 
     await user.click(screen.getByRole("button", { name: "Fill with demo account" }));
-    await user.dblClick(screen.getByRole("button", { name: "Complete order" }));
+    await user.dblClick(
+      screen.getByRole("button", { name: "Proceed to JazzCash Payment" }),
+    );
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(screen.getByLabelText("Cart item count")).toHaveTextContent("3");
@@ -217,7 +226,9 @@ describe("CheckoutPage", () => {
     renderCheckout();
 
     await user.click(screen.getByRole("button", { name: "Fill with demo account" }));
-    await user.click(screen.getByRole("button", { name: "Complete order" }));
+    await user.click(
+      screen.getByRole("button", { name: "Proceed to JazzCash Payment" }),
+    );
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "The order service could not be reached. Try again.",
@@ -225,7 +236,9 @@ describe("CheckoutPage", () => {
     expect(screen.getByLabelText("Full name")).toHaveValue(DEMO_CUSTOMER.fullName);
     expect(screen.getByLabelText("Cart item count")).toHaveTextContent("3");
 
-    await user.click(screen.getByRole("button", { name: "Complete order" }));
+    await user.click(
+      screen.getByRole("button", { name: "Proceed to JazzCash Payment" }),
+    );
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     const firstPayload = parseRequestBody(fetchSpy.mock.calls[0]?.[1]);
     const retryPayload = parseRequestBody(fetchSpy.mock.calls[1]?.[1]);
@@ -246,7 +259,9 @@ describe("CheckoutPage", () => {
     renderCheckout();
 
     await user.click(screen.getByRole("button", { name: "Fill with demo account" }));
-    await user.click(screen.getByRole("button", { name: "Complete order" }));
+    await user.click(
+      screen.getByRole("button", { name: "Proceed to JazzCash Payment" }),
+    );
     const initialPayload = parseRequestBody(fetchSpy.mock.calls[0]?.[1]);
 
     await user.click(screen.getByRole("link", { name: "Leave checkout" }));
@@ -258,7 +273,9 @@ describe("CheckoutPage", () => {
       screen.getByText(/saved order attempt being retried/i),
     ).toBeInTheDocument();
     expect(screen.getByText("€186.95")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Complete order" }));
+    await user.click(
+      screen.getByRole("button", { name: "Proceed to JazzCash Payment" }),
+    );
 
     const retryPayload = parseRequestBody(fetchSpy.mock.calls[1]?.[1]);
     expect(retryPayload).toEqual(initialPayload);
@@ -281,7 +298,9 @@ describe("CheckoutPage", () => {
     renderCheckout();
 
     await user.click(screen.getByRole("button", { name: "Fill with demo account" }));
-    await user.click(screen.getByRole("button", { name: "Complete order" }));
+    await user.click(
+      screen.getByRole("button", { name: "Proceed to JazzCash Payment" }),
+    );
     await user.click(screen.getByRole("link", { name: "Leave checkout" }));
     await user.click(screen.getByRole("button", { name: "Add later cart item" }));
     await user.click(screen.getByRole("button", { name: "Change submitted quantity" }));
@@ -298,7 +317,7 @@ describe("CheckoutPage", () => {
 
   it("rejects an invalid confirmation without clearing the cart", async () => {
     const fetchSpy = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(JSON.stringify({ ...completedOrder, status: "paid" }), {
+      new Response(JSON.stringify({ ...completedOrder, status: "invalid_status" }), {
         status: 201,
         headers: { "Content-Type": "application/json" },
       }),
@@ -308,7 +327,9 @@ describe("CheckoutPage", () => {
     renderCheckout();
 
     await user.click(screen.getByRole("button", { name: "Fill with demo account" }));
-    await user.click(screen.getByRole("button", { name: "Complete order" }));
+    await user.click(
+      screen.getByRole("button", { name: "Proceed to JazzCash Payment" }),
+    );
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "The order service returned an invalid confirmation.",
@@ -334,4 +355,55 @@ describe("CheckoutPage", () => {
     expect(await screen.findByText("Your cart route")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Checkout" })).not.toBeInTheDocument();
   });
+
+  it("navigates browser to paymentRedirectUrl when received from order creation", async () => {
+    const assignSpy = vi.fn();
+    const originalLocation = window.location;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...originalLocation, assign: assignSpy },
+    });
+
+    const orderWithRedirect: CompletedOrder = {
+      ...completedOrder,
+      paymentRedirectUrl: "/api/payments/redirect/ord_123e4567-e89b-42d3-a456-426614174000",
+    };
+    const fetchSpy = vi.fn<typeof fetch>().mockResolvedValue(successfulResponse(orderWithRedirect));
+    vi.stubGlobal("fetch", fetchSpy);
+    const user = userEvent.setup();
+    renderCheckout();
+
+    await user.click(screen.getByRole("button", { name: "Fill with demo account" }));
+    await user.click(
+      screen.getByRole("button", { name: "Proceed to JazzCash Payment" }),
+    );
+
+    expect(assignSpy).toHaveBeenCalledWith(
+      "/api/payments/redirect/ord_123e4567-e89b-42d3-a456-426614174000",
+    );
+
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: originalLocation,
+    });
+  });
+
+  it("displays confirmation card when returning from JazzCash callback queries", () => {
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>());
+    seedStoredCart([]);
+    render(
+      <CartProvider>
+        <MemoryRouter initialEntries={["/checkout?reference=CG-DEAD1234&payment=paid"]}>
+          <Routes>
+            <Route path="checkout" element={<CheckoutPage />} />
+          </Routes>
+        </MemoryRouter>
+      </CartProvider>,
+    );
+
+    expect(screen.getByText("JazzCash payment successful")).toBeInTheDocument();
+    expect(screen.getByText("CG-DEAD1234")).toBeInTheDocument();
+    expect(screen.getByText("Paid")).toBeInTheDocument();
+  });
 });
+

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Navigate } from "react-router";
+import { Navigate, useSearchParams } from "react-router";
 
 import { CheckoutCartSummary } from "@/components/checkout/CheckoutCartSummary";
 import { CheckoutDetailsForm } from "@/components/checkout/CheckoutDetailsForm";
@@ -25,6 +25,37 @@ import {
 } from "../../shared/orders";
 
 export function CheckoutPage() {
+  const [searchParams] = useSearchParams();
+  const returnReference = searchParams.get("reference");
+  const returnPayment = searchParams.get("payment");
+
+  const returnOrder: CompletedOrder | null = returnReference
+    ? {
+        id: `return_${returnReference}`,
+        reference: returnReference,
+        createdAt: new Date().toISOString(),
+        status:
+          returnPayment === "paid"
+            ? "completed"
+            : returnPayment === "pending"
+              ? "pending"
+              : "failed",
+        paymentStatus:
+          returnPayment === "paid"
+            ? "paid"
+            : returnPayment === "pending"
+              ? "pending"
+              : returnPayment === "failed"
+                ? "failed"
+                : "not_configured",
+        currency: "PKR",
+        subtotalCents: 0,
+        itemCount: 0,
+        demoCustomer: DEMO_CUSTOMER,
+        items: [],
+      }
+    : null;
+
   const {
     items: cartItems,
     removeCompletedLines,
@@ -50,6 +81,8 @@ export function CheckoutPage() {
         })
       : deriveCartTotals({ lines: attempt.lines });
 
+  const activeConfirmation = confirmation ?? returnOrder;
+
   useEffect(() => {
     isMounted.current = true;
 
@@ -67,7 +100,7 @@ export function CheckoutPage() {
   if (
     cartItems.length === 0 &&
     attempt === null &&
-    confirmation === null
+    activeConfirmation === null
   ) {
     return <Navigate to="/cart" replace />;
   }
@@ -101,6 +134,7 @@ export function CheckoutPage() {
       idempotencyKey: currentAttempt.idempotencyKey,
       demoCustomerId: DEMO_CUSTOMER.id,
       lines: currentAttempt.lines,
+      paymentMethod: "jazzcash",
     };
     isRequestPending.current = true;
     setIsSubmitting(true);
@@ -109,6 +143,8 @@ export function CheckoutPage() {
     void createOrder(request)
       .then((order) => {
         const wasCurrentAttempt = clearOrderAttempt(request.idempotencyKey);
+        removeCompletedLines(request.lines);
+
         if (isMounted.current) {
           clearOrderCompletion();
           setAttempt(null);
@@ -116,7 +152,14 @@ export function CheckoutPage() {
         } else if (wasCurrentAttempt) {
           saveOrderCompletion(order);
         }
-        removeCompletedLines(request.lines);
+
+        if (order.paymentRedirectUrl) {
+          try {
+            window.location.assign(order.paymentRedirectUrl);
+          } catch {
+            // Unhandled in non-browser testing environments
+          }
+        }
       })
       .catch((error: unknown) => {
         if (isMounted.current) {
@@ -147,7 +190,7 @@ export function CheckoutPage() {
         Use the fixed synthetic account to save a completed demo order.
       </p>
 
-      {confirmation === null ? (
+      {activeConfirmation === null ? (
         <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(26rem,32rem)] lg:items-start">
           <div className="order-2 min-w-0 lg:order-1">
             <CheckoutDetailsForm
@@ -172,7 +215,7 @@ export function CheckoutPage() {
         </div>
       ) : (
         <div className="mx-auto max-w-3xl">
-          <OrderConfirmation order={confirmation} />
+          <OrderConfirmation order={activeConfirmation} />
         </div>
       )}
     </section>

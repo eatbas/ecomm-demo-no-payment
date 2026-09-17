@@ -30,7 +30,56 @@ export function AdminOrderCard({ order }: AdminOrderCardProps) {
       </div>
 
       <div className="min-w-0 space-y-6 p-4">
-        <AdminOrderStatus />
+        <AdminOrderStatus
+          status={view.status}
+          paymentStatus={view.paymentStatus}
+          instrument={view.transaction?.txnType}
+        />
+
+        {view.transaction !== undefined ? (
+          <section aria-labelledby={`${headingId}-transaction`}>
+            <h3
+              id={`${headingId}-transaction`}
+              className="text-sm font-bold text-primary"
+            >
+              Transaction details
+            </h3>
+            <dl className="mt-2 grid gap-1.5 rounded-xl border border-border/80 bg-muted/40 p-3 text-xs">
+              <div className="flex justify-between gap-2">
+                <dt className="text-muted-foreground">Txn Ref</dt>
+                <dd className="font-mono font-semibold">
+                  {view.transaction.txnRefNo}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-2">
+                <dt className="text-muted-foreground">Instrument</dt>
+                <dd className="font-semibold">{view.transaction.txnType}</dd>
+              </div>
+              {view.transaction.retrievalRefNo !== undefined ? (
+                <div className="flex justify-between gap-2">
+                  <dt className="text-muted-foreground">RRN</dt>
+                  <dd className="font-mono">
+                    {view.transaction.retrievalRefNo}
+                  </dd>
+                </div>
+              ) : null}
+              {view.transaction.authCode !== undefined ? (
+                <div className="flex justify-between gap-2">
+                  <dt className="text-muted-foreground">Auth Code</dt>
+                  <dd className="font-mono">{view.transaction.authCode}</dd>
+                </div>
+              ) : null}
+              {view.transaction.responseMessage !== undefined ? (
+                <div className="flex justify-between gap-2">
+                  <dt className="text-muted-foreground">Message</dt>
+                  <dd className="font-medium text-foreground">
+                    {view.transaction.responseMessage}
+                  </dd>
+                </div>
+              ) : null}
+            </dl>
+          </section>
+        ) : null}
 
         <section aria-labelledby={`${headingId}-account`}>
           <h3 id={`${headingId}-account`} className="text-sm font-bold text-primary">

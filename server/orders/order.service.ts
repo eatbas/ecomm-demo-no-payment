@@ -11,9 +11,11 @@ import {
   type CompletedOrderItem,
   type CreateOrderRequest,
 } from "../../shared/orders.js";
+import { generateTxnRefNo } from "../payments/jazzcash/jazzcash.crypto.js";
 import type {
   OrderRepository,
   PersistOrderResult,
+  UpdateTransactionParams,
 } from "./order.repository.js";
 
 export class OrderValidationError extends Error {
@@ -59,6 +61,13 @@ function validateRequest(request: CreateOrderRequest): void {
   ) {
     throw new OrderValidationError("The order must contain a valid number of lines.");
   }
+  if (
+    request.paymentMethod !== undefined &&
+    request.paymentMethod !== "jazzcash" &&
+    request.paymentMethod !== "none"
+  ) {
+    throw new OrderValidationError("The payment method is invalid.");
+  }
 }
 
 function createItems(request: CreateOrderRequest): readonly CompletedOrderItem[] {
@@ -99,7 +108,10 @@ function fingerprintRequest(request: CreateOrderRequest): string {
     .map((line) => `${line.productId}:${line.quantity}`)
     .join("|");
   return createHash("sha256")
-    .update(`${request.demoCustomerId}|${canonicalLines}`, "utf8")
+    .update(
+      `${request.demoCustomerId}|${request.paymentMethod ?? "none"}|${canonicalLines}`,
+      "utf8",
+    )
     .digest("hex");
 }
 
@@ -118,6 +130,10 @@ export class OrderService {
       dependencies.createIdentifiers ?? createOrderIdentifiers;
   }
 
+  get repository(): OrderRepository {
+    return this.#repository;
+  }
+
   create(request: CreateOrderRequest): PersistOrderResult {
     validateRequest(request);
     const items = createItems(request);
@@ -127,16 +143,61 @@ export class OrderService {
       0,
     );
     const itemCount = items.reduce((total, item) => total + item.quantity, 0);
+    const now = this.#now();
+    const isJazzCash = request.paymentMethod === "jazzcash";
 
-    return this.#repository.createOrReplay({
+    const result = this.#repository.createOrReplay({
       ...identifiers,
       idempotencyKey: request.idempotencyKey,
       requestFingerprint: fingerprintRequest(request),
-      createdAt: this.#now().toISOString(),
+      createdAt: now.toISOString(),
+      status: isJazzCash ? "pending" : "completed",
+      paymentStatus: isJazzCash ? "pending" : "not_configured",
+      currency: isJazzCash ? "PKR" : "EUR",
       subtotalCents,
       itemCount,
       items,
     });
+
+    if (isJazzCash) {
+      let order = result.order;
+      if (order.transaction === undefined) {
+        const txnRefNo = generateTxnRefNo("TRN", now);
+        this.#repository.createTransaction({
+          id: `txn_${randomUUID()}`,
+          orderId: order.id,
+          txnRefNo,
+          txnType: "MPAY",
+          amountPaisa: subtotalCents,
+          currency: "PKR",
+          status: "initiated",
+          createdAt: now.toISOString(),
+        });
+        order = this.#repository.findOrderById(order.id) ?? order;
+      }
+
+      return {
+        created: result.created,
+        order: {
+          ...order,
+          paymentRedirectUrl: `/api/payments/redirect/${order.id}`,
+        },
+      };
+    }
+
+    return result;
+  }
+
+  findOrderById(orderId: string): CompletedOrder | undefined {
+    return this.#repository.findOrderById(orderId);
+  }
+
+  findOrderByTxnRefNo(txnRefNo: string): CompletedOrder | undefined {
+    return this.#repository.findOrderByTxnRefNo(txnRefNo);
+  }
+
+  updateTransactionStatus(params: UpdateTransactionParams): CompletedOrder {
+    return this.#repository.updateTransactionStatus(params);
   }
 
   listCompleted(limit: number): readonly CompletedOrder[] {

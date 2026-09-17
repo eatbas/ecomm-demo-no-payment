@@ -51,4 +51,50 @@ describe("server configuration", () => {
       );
     },
   );
+
+  it("reads complete JazzCash configuration", () => {
+    const config = readServerConfig({
+      JAZZCASH_MERCHANT_ID: "MC990739",
+      JAZZCASH_PASSWORD: "testpassword",
+      JAZZCASH_INTEGRITY_SALT: "testsalt123",
+      JAZZCASH_MERCHANT_MPIN: "1234",
+      JAZZCASH_RETURN_URL: "https://ecomm.atbas.xyz/api/payments/return",
+      JAZZCASH_IPN_URL: "https://ecomm.atbas.xyz/api/payments/ipn",
+      PUBLIC_BASE_URL: "https://ecomm.atbas.xyz",
+    });
+
+    expect(config.jazzcash).toEqual({
+      merchantId: "MC990739",
+      password: "testpassword",
+      integritySalt: "testsalt123",
+      merchantMpin: "1234",
+      returnUrl: "https://ecomm.atbas.xyz/api/payments/return",
+      ipnUrl: "https://ecomm.atbas.xyz/api/payments/ipn",
+      postUrl:
+        "https://onlinepayments.jazzcash.com.pk/payment-orchestrator/CustomerPortal/transactionmanagement/merchantform",
+      publicBaseUrl: "https://ecomm.atbas.xyz",
+    });
+  });
+
+  it("allows empty optional JAZZCASH_MERCHANT_MPIN", () => {
+    const config = readServerConfig({
+      JAZZCASH_MERCHANT_ID: "MC990739",
+      JAZZCASH_PASSWORD: "testpassword",
+      JAZZCASH_INTEGRITY_SALT: "testsalt123",
+      JAZZCASH_MERCHANT_MPIN: "   ",
+      JAZZCASH_RETURN_URL: "https://ecomm.atbas.xyz/api/payments/return",
+      JAZZCASH_IPN_URL: "https://ecomm.atbas.xyz/api/payments/ipn",
+      PUBLIC_BASE_URL: "https://ecomm.atbas.xyz",
+    });
+
+    expect(config.jazzcash?.merchantMpin).toBeUndefined();
+  });
+
+  it("rejects incomplete JazzCash configuration", () => {
+    expect(() =>
+      readServerConfig({
+        JAZZCASH_MERCHANT_ID: "MC990739",
+      }),
+    ).toThrow("JAZZCASH_PASSWORD must be specified when JazzCash is configured.");
+  });
 });

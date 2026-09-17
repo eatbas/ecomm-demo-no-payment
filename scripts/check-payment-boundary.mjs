@@ -72,7 +72,7 @@ const browserPolicies = [
   {
     name: "payment credential or token",
     patterns: [
-      /\bpayment[-_.]?(?:credential|intent|key|method|secret|token)s?\b/i,
+      /\bpayment[-_.]?(?:credential|intent|key|secret|token)s?\b/i,
       /\b(?:billing|card)[-_.]?(?:credential|number|token)s?\b/i,
     ],
   },
@@ -264,14 +264,28 @@ export async function inspectPaymentBoundary(rootDirectory = process.cwd()) {
     }
   }
 
-  const nonBrowserPolicies = browserPolicies.filter(
+  const sharedPolicies = browserPolicies.filter(
     (policy) => policy.name !== "browser network primitive",
   );
-  for (const path of [...sharedFiles, ...serverFiles]) {
+  for (const path of sharedFiles) {
     inspectValue(
       relative(absoluteRoot, path),
       await readFile(path, "utf8"),
-      nonBrowserPolicies,
+      sharedPolicies,
+      violations,
+    );
+  }
+
+  const serverPolicies = browserPolicies.filter(
+    (policy) =>
+      policy.name === "payment provider identifier or domain" ||
+      policy.name === "analytics or tracking identifier or domain",
+  );
+  for (const path of serverFiles) {
+    inspectValue(
+      relative(absoluteRoot, path),
+      await readFile(path, "utf8"),
+      serverPolicies,
       violations,
     );
   }

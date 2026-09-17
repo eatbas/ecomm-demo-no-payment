@@ -40,6 +40,10 @@ export const createOrderBodySchema = {
         },
       },
     },
+    paymentMethod: {
+      type: "string",
+      enum: ["jazzcash", "none"],
+    },
   },
 } as const;
 

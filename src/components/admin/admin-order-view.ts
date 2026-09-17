@@ -1,7 +1,23 @@
-import type { CompletedOrder } from "../../../shared/orders";
+import type {
+  CompletedOrder,
+  OrderPaymentStatus,
+  OrderStatus,
+} from "../../../shared/orders";
 
 import { formatCompletedAt } from "@/components/admin/admin-order-format";
 import { formatCurrency } from "@/lib/currency";
+
+export interface AdminOrderTransactionView {
+  readonly amountFormatted: string;
+  readonly authCode?: string;
+  readonly responseCode?: string;
+  readonly responseMessage?: string;
+  readonly retrievalRefNo?: string;
+  readonly status: string;
+  readonly txnDateTime?: string;
+  readonly txnRefNo: string;
+  readonly txnType: string;
+}
 
 export interface AdminOrderView {
   readonly completedAt: string;
@@ -22,8 +38,11 @@ export interface AdminOrderView {
     readonly productName: string;
     readonly quantityLabel: string;
   }[];
+  readonly paymentStatus: OrderPaymentStatus;
   readonly reference: string;
+  readonly status: OrderStatus;
   readonly total: string;
+  readonly transaction?: AdminOrderTransactionView;
 }
 
 export function createAdminOrderView(order: CompletedOrder): AdminOrderView {
@@ -52,6 +71,27 @@ export function createAdminOrderView(order: CompletedOrder): AdminOrderView {
     })),
     itemCount: order.itemCount,
     itemCountLabel: `${order.itemCount} ${order.itemCount === 1 ? "item" : "items"}`,
+    status: order.status,
+    paymentStatus: order.paymentStatus,
     total: formatCurrency(order.subtotalCents),
+    transaction:
+      order.transaction !== undefined
+        ? {
+            txnRefNo: order.transaction.txnRefNo,
+            txnType:
+              order.transaction.txnType === "MPAY"
+                ? "Card (MPAY)"
+                : order.transaction.txnType === "MWALLET"
+                  ? "Wallet (MWALLET)"
+                  : order.transaction.txnType,
+            amountFormatted: `PKR ${(order.transaction.amountPaisa / 100).toFixed(2)}`,
+            status: order.transaction.status,
+            responseCode: order.transaction.responseCode,
+            responseMessage: order.transaction.responseMessage,
+            retrievalRefNo: order.transaction.retrievalRefNo,
+            authCode: order.transaction.authCode,
+            txnDateTime: order.transaction.txnDatetime,
+          }
+        : undefined,
   };
 }

@@ -69,7 +69,11 @@ describe("customer shopping flow", () => {
 
     await user.click(screen.getByRole("button", { name: "Fill with demo account" }));
     expect(screen.getByLabelText("Email address")).toHaveValue(DEMO_CUSTOMER.email);
-    await user.click(screen.getByRole("button", { name: "Complete order" }));
+    await user.click(
+      screen.getByRole("button", {
+        name: /Proceed to JazzCash Payment|Complete order/,
+      }),
+    );
 
     expect(
       await screen.findByRole("heading", { name: "Demo order completed" }),

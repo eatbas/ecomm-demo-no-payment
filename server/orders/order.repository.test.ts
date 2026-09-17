@@ -176,4 +176,65 @@ describe("OrderRepository", () => {
     ]);
     repository.close();
   });
+
+  it("creates and updates payment transactions and updates order statuses", () => {
+    const repository = createRepository();
+    const orderId = "ord_00000000-0000-4000-8000-000000000501";
+    repository.createOrReplay({
+      id: orderId,
+      reference: "CG-00000501",
+      idempotencyKey: "00000000-0000-4000-8000-000000000501",
+      requestFingerprint: "fingerprint-501",
+      createdAt: "2026-08-25T12:00:00.000Z",
+      status: "pending",
+      paymentStatus: "pending",
+      currency: "PKR",
+      subtotalCents: 7900,
+      itemCount: 1,
+      items: [
+        {
+          productId: "everyday-backpack",
+          productName: "Everyday backpack",
+          unitPriceCents: 7900,
+          quantity: 1,
+          lineTotalCents: 7900,
+        },
+      ],
+    });
+
+    const txnRefNo = "TRN20260825120000123";
+    const txn = repository.createTransaction({
+      id: "txn_001",
+      orderId,
+      txnRefNo,
+      txnType: "MPAY",
+      amountPaisa: 7900,
+      currency: "PKR",
+      status: "initiated",
+    });
+
+    expect(txn.txnRefNo).toBe(txnRefNo);
+
+    const foundByRef = repository.findOrderByTxnRefNo(txnRefNo);
+    expect(foundByRef?.id).toBe(orderId);
+    expect(foundByRef?.transaction?.status).toBe("initiated");
+
+    const updated = repository.updateTransactionStatus({
+      txnRefNo,
+      status: "paid",
+      responseCode: "121",
+      responseMessage: "Transaction has been marked confirmed by Merchant.",
+      retrievalRefNo: "240418718258",
+      authCode: "060935465981",
+      txnDatetime: "20260825120000",
+    });
+
+    expect(updated.status).toBe("completed");
+    expect(updated.paymentStatus).toBe("paid");
+    expect(updated.transaction?.status).toBe("paid");
+    expect(updated.transaction?.responseCode).toBe("121");
+    expect(updated.transaction?.retrievalRefNo).toBe("240418718258");
+
+    repository.close();
+  });
 });

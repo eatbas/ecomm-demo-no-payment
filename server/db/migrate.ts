@@ -13,6 +13,11 @@ const migrations: readonly Migration[] = [
     name: "create-orders",
     source: new URL("./migrations/001-create-orders.sql", import.meta.url),
   },
+  {
+    version: 2,
+    name: "add-jazzcash-payment",
+    source: new URL("./migrations/002-add-jazzcash-payment.sql", import.meta.url),
+  },
 ];
 
 interface AppliedMigrationRow {
