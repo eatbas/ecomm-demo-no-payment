@@ -71,13 +71,20 @@ function renderRedirectHtml(postUrl: string, parameters: Record<string, string>)
     <p>Please wait while we securely transfer you to complete your payment.</p>
     <form id="jazzcash" method="post" action="${escapeHtml(postUrl)}">
 ${inputs}
-      <noscript>
-        <button type="submit">Click here to continue to JazzCash</button>
-      </noscript>
+      <button type="submit" id="submit-btn" style="margin-top: 1rem;">Click here if not redirected automatically</button>
     </form>
   </div>
   <script>
-    document.getElementById('jazzcash').submit();
+    try {
+      document.getElementById('jazzcash').submit();
+    } catch (e) {
+      window.addEventListener('DOMContentLoaded', function() {
+        var form = document.getElementById('jazzcash');
+        if (form) {
+          form.submit();
+        }
+      });
+    }
   </script>
 </body>
 </html>`;
@@ -164,18 +171,16 @@ export function registerPaymentRoutes(
   );
 
   // Asynchronous Instant Payment Notification (IPN) listener
-  app.post(
-    "/api/payments/ipn",
-    async (
-      request: FastifyRequest<{ Body: Record<string, unknown> }>,
-      reply: FastifyReply,
-    ) => {
-      if (jazzcashConfig === undefined) {
-        return reply.code(503).send({
-          code: "PAYMENT_NOT_CONFIGURED",
-          message: "JazzCash payment gateway is not configured.",
-        });
-      }
+  const handleIpn = async (
+    request: FastifyRequest<{ Body: Record<string, unknown> }>,
+    reply: FastifyReply,
+  ) => {
+    if (jazzcashConfig === undefined) {
+      return reply.code(503).send({
+        code: "PAYMENT_NOT_CONFIGURED",
+        message: "JazzCash payment gateway is not configured.",
+      });
+    }
 
       const rawBody = request.body;
       const payload: Record<string, unknown> =
@@ -255,8 +260,10 @@ export function registerPaymentRoutes(
       };
 
       return reply.code(200).type("application/json").send(acknowledgement);
-    },
-  );
+    };
+
+    app.post("/api/payments/ipn", handleIpn);
+    app.post("/api/payments/jazzcash/ipn", handleIpn);
 
   // Return URL callback handler (handles both POST and GET from JazzCash)
   const handleReturn = async (
@@ -333,4 +340,6 @@ export function registerPaymentRoutes(
 
   app.post("/api/payments/return", handleReturn);
   app.get("/api/payments/return", handleReturn);
+  app.post("/api/payments/jazzcash/return", handleReturn);
+  app.get("/api/payments/jazzcash/return", handleReturn);
 }

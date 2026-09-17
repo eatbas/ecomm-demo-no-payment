@@ -145,20 +145,30 @@ export function CheckoutPage() {
         const wasCurrentAttempt = clearOrderAttempt(request.idempotencyKey);
         removeCompletedLines(request.lines);
 
-        if (isMounted.current) {
-          clearOrderCompletion();
-          setAttempt(null);
-          setConfirmation(order);
-        } else if (wasCurrentAttempt) {
-          saveOrderCompletion(order);
-        }
-
         if (order.paymentRedirectUrl) {
           try {
             window.location.assign(order.paymentRedirectUrl);
           } catch {
             // Unhandled in non-browser testing environments
           }
+          try {
+            window.location.href = order.paymentRedirectUrl;
+          } catch {
+            // Unhandled in non-browser testing environments
+          }
+          if (isMounted.current) {
+            clearOrderCompletion();
+            setAttempt(null);
+          }
+          return;
+        }
+
+        if (isMounted.current) {
+          clearOrderCompletion();
+          setAttempt(null);
+          setConfirmation(order);
+        } else if (wasCurrentAttempt) {
+          saveOrderCompletion(order);
         }
       })
       .catch((error: unknown) => {

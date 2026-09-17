@@ -75,6 +75,9 @@ describe("Payment Routes", () => {
 
     expect(redirectResponse.statusCode).toBe(200);
     expect(redirectResponse.headers["content-type"]).toContain("text/html");
+    expect(redirectResponse.headers["content-security-policy"]).toContain(
+      "script-src 'self' 'unsafe-inline'",
+    );
     const html = redirectResponse.body;
     expect(html).toContain('name="pp_MerchantID" value="MC990739"');
     expect(html).toContain('name="pp_TxnType" value="MPAY"');

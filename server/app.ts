@@ -28,6 +28,19 @@ const CONTENT_SECURITY_POLICY = [
   "script-src 'self'",
   "style-src 'self'",
 ].join("; ");
+const REDIRECT_CONTENT_SECURITY_POLICY = [
+  "default-src 'none'",
+  "base-uri 'none'",
+  "connect-src 'self'",
+  "font-src 'self'",
+  "form-action 'self' https://onlinepayments.jazzcash.com.pk",
+  "frame-ancestors 'none'",
+  "img-src 'self'",
+  "manifest-src 'self'",
+  "object-src 'none'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+].join("; ");
 
 export interface BuildAppOptions {
   readonly databasePath: string;
@@ -36,10 +49,16 @@ export interface BuildAppOptions {
   readonly jazzcash?: JazzCashConfig;
 }
 
-function setSecurityHeaders(reply: {
-  header(name: string, value: string): unknown;
-}): void {
-  reply.header("Content-Security-Policy", CONTENT_SECURITY_POLICY);
+function setSecurityHeaders(
+  reply: {
+    header(name: string, value: string): unknown;
+  },
+  isRedirect = false,
+): void {
+  reply.header(
+    "Content-Security-Policy",
+    isRedirect ? REDIRECT_CONTENT_SECURITY_POLICY : CONTENT_SECURITY_POLICY,
+  );
   reply.header(
     "Permissions-Policy",
     "camera=(), geolocation=(), microphone=(), payment=(), usb=()",
@@ -96,8 +115,10 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
 
   try {
     app.addHook("onSend", (request, reply, payload, done) => {
-      setSecurityHeaders(reply);
-      if (isDynamicPath(getRequestPathname(request.url))) {
+      const pathname = getRequestPathname(request.url);
+      const isRedirect = pathname.startsWith("/api/payments/redirect");
+      setSecurityHeaders(reply, isRedirect);
+      if (isDynamicPath(pathname)) {
         reply.header("Cache-Control", "no-store");
       } else if (!reply.hasHeader("Cache-Control")) {
         reply.header("Cache-Control", "no-cache");
